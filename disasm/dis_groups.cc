@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: dis_groups.cc,v 1.46 2009/12/28 13:52:40 sshwarts Exp $
+// $Id: dis_groups.cc,v 1.48 2010/02/09 20:28:12 sshwarts Exp $
 /////////////////////////////////////////////////////////////////////////
 //
 //   Copyright (c) 2005-2009 Stanislav Shwartsman
@@ -425,52 +425,28 @@ void disassembler::Vpd(const x86_insn *insn) { Vq(insn); }
 
 void disassembler::Ww(const x86_insn *insn)
 {
-  if (insn->mod == 3)
-  {
-    if (intel_mode)
-      dis_sprintf  ("xmm%d", insn->rm);
-    else
-      dis_sprintf("%%xmm%d", insn->rm);
-  }
+  if (insn->mod == 3) Udq(insn);
   else
     (this->*resolve_modrm)(insn, W_SIZE);
 }
 
 void disassembler::Wd(const x86_insn *insn)
 {
-  if (insn->mod == 3)
-  {
-    if (intel_mode)
-      dis_sprintf  ("xmm%d", insn->rm);
-    else
-      dis_sprintf("%%xmm%d", insn->rm);
-  }
+  if (insn->mod == 3) Udq(insn);
   else
     (this->*resolve_modrm)(insn, D_SIZE);
 }
 
 void disassembler::Wq(const x86_insn *insn)
 {
-  if (insn->mod == 3)
-  {
-    if (intel_mode)
-      dis_sprintf  ("xmm%d", insn->rm);
-    else
-      dis_sprintf("%%xmm%d", insn->rm);
-  }
+  if (insn->mod == 3) Udq(insn);
   else
     (this->*resolve_modrm)(insn, Q_SIZE);
 }
 
 void disassembler::Wdq(const x86_insn *insn)
 {
-  if (insn->mod == 3)
-  {
-    if (intel_mode)
-      dis_sprintf  ("xmm%d", insn->rm);
-    else
-      dis_sprintf("%%xmm%d", insn->rm);
-  }
+  if (insn->mod == 3) Udq(insn);
   else
     (this->*resolve_modrm)(insn, O_SIZE);
 }
