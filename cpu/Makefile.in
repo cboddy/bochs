@@ -16,6 +16,7 @@
 
 
 @SUFFIX_LINE@
+.SUFFIXES : .bc
 
 srcdir = @srcdir@
 VPATH = @srcdir@
@@ -128,6 +129,14 @@ OBJS64 = \
 
 BX_INCLUDES = ../bochs.h ../config.h
 
+.cc.bc:
+	$(CXX) -c $(BX_INCDIRS) $(CXXFLAGS) $< -o $@ -emit-llvm
+
+BCFILES = $(OBJS:.o=.bc)
+
+libcpu.bc: $(BCFILES)
+	rm -f  $@
+	llvm-ld -r $(BCFILES) -o $@ 
 
 all: libcpu.a
 

@@ -61,33 +61,9 @@ public:
     fineGranularityMapping[hash(pAddr)] |= mask;
   }
 
-  // whole page is being altered
-  BX_CPP_INLINE void decWriteStamp(bx_phy_address pAddr)
-  {
-    Bit32u index = hash(pAddr);
 
-    if (fineGranularityMapping[index]) {
-      handleSMC(pAddr, 0xffffffff); // one of the CPUs might be running trace from this page
-      fineGranularityMapping[index] = 0;
-    }
-  }
-
-  // assumption: write does not split 4K page
-  BX_CPP_INLINE void decWriteStamp(bx_phy_address pAddr, unsigned len)
-  {
-    Bit32u index = hash(pAddr);
-
-    if (fineGranularityMapping[index]) {
-       Bit32u mask  = 1 << (PAGE_OFFSET((Bit32u) pAddr) >> 7);
-              mask |= 1 << (PAGE_OFFSET((Bit32u) pAddr + len - 1) >> 7);
-
-       if (fineGranularityMapping[index] & mask) {
-          // one of the CPUs might be running trace from this page
-          handleSMC(pAddr, mask);
-          fineGranularityMapping[index] &= ~mask;
-       }       
-    }
-  }
+  void decWriteStamp1(bx_phy_address pAddr);
+  void decWriteStamp(bx_phy_address pAddr, unsigned len);
 
   BX_CPP_INLINE void resetWriteStamps(void);
 };

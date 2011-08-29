@@ -24,6 +24,8 @@
 #define NEED_CPU_REG_SHORTCUTS 1
 #include "bochs.h"
 #include "cpu.h"
+#include "llvm.h"
+
 #define LOG_THIS BX_CPU_THIS_PTR
 
 // Make code more tidy with a few macros.
@@ -54,6 +56,34 @@ void handleSMC(bx_phy_address pAddr, Bit32u mask)
     BX_CPU(i)->iCache.handleSMC(pAddr, mask);
   }
 }
+
+  // whole page is being altered
+void bxPageWriteStampTable::decWriteStamp1(bx_phy_address pAddr)
+  {
+    Bit32u index = hash(pAddr);
+
+    if (fineGranularityMapping[index]) {
+      handleSMC(pAddr, 0xffffffff); // one of the CPUs might be running trace from this page
+      fineGranularityMapping[index] = 0;
+    }
+  }
+
+  // assumption: write does not split 4K page
+void bxPageWriteStampTable::decWriteStamp(bx_phy_address pAddr, unsigned len)
+  {
+    Bit32u index = hash(pAddr);
+
+    if (fineGranularityMapping[index]) {
+       Bit32u mask  = 1 << (PAGE_OFFSET((Bit32u) pAddr) >> 7);
+              mask |= 1 << (PAGE_OFFSET((Bit32u) pAddr + len - 1) >> 7);
+
+       if (fineGranularityMapping[index] & mask) {
+          // one of the CPUs might be running trace from this page
+          handleSMC(pAddr, mask);
+          fineGranularityMapping[index] &= ~mask;
+       }       
+    }
+  }
 
 #if BX_SUPPORT_TRACE_CACHE
 

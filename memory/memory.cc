@@ -23,6 +23,7 @@
 #include "bochs.h"
 #include "cpu/cpu.h"
 #include "iodev/iodev.h"
+#include "llvm.h"
 #define LOG_THIS BX_MEM_THIS
 
 //
@@ -86,33 +87,36 @@ mem_write:
 
   // all memory access fits in single 4K page
   if (a20addr < BX_MEM_THIS len && ! is_bios) {
+    bxPageWriteStampTable& pageWriteStampTable = *bx_cpu_methods.pageWriteStampTable;
     // all of data is within limits of physical memory
     if (a20addr < 0x000a0000 || a20addr >= 0x00100000)
     {
+      void (bxPageWriteStampTable::*decWriteStamp)(bx_phy_address pAddr, unsigned len) = bx_cpu_methods.decWriteStamp;
       if (len == 8) {
-        pageWriteStampTable.decWriteStamp(a20addr, 8);
+        (pageWriteStampTable.*decWriteStamp)(a20addr, 8);
         WriteHostQWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit64u*)data);
         return;
       }
       if (len == 4) {
-        pageWriteStampTable.decWriteStamp(a20addr, 4);
+        (pageWriteStampTable.*decWriteStamp)(a20addr, 4);
         WriteHostDWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit32u*)data);
         return;
       }
       if (len == 2) {
-        pageWriteStampTable.decWriteStamp(a20addr, 2);
+        (pageWriteStampTable.*decWriteStamp)(a20addr, 2);
         WriteHostWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit16u*)data);
         return;
       }
       if (len == 1) {
-        pageWriteStampTable.decWriteStamp(a20addr, 1);
+        (pageWriteStampTable.*decWriteStamp)(a20addr, 1);
         * (BX_MEM_THIS get_vector(a20addr)) = * (Bit8u *) data;
         return;
       }
       // len == other, just fall thru to special cases handling
     }
 
-    pageWriteStampTable.decWriteStamp(a20addr);
+    void (bxPageWriteStampTable::*decWriteStamp)(bx_phy_address pAddr) = bx_cpu_methods.decWriteStamp1;
+    (pageWriteStampTable.*decWriteStamp)(a20addr);
 
 #ifdef BX_LITTLE_ENDIAN
     data_ptr = (Bit8u *) data;

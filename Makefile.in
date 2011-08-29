@@ -75,6 +75,7 @@ DLLTOOL=dlltool
 RC_CMD=@RC_CMD@
 
 @SUFFIX_LINE@
+.SUFFIXES : .bc
 
 srcdir = @srcdir@
 VPATH = @srcdir@
@@ -136,6 +137,7 @@ BX_INCDIRS = -I. -I$(srcdir)/. -I@INSTRUMENT_DIR@ -I$(srcdir)/@INSTRUMENT_DIR@
 NONINLINE_OBJS = \
 	logio.o \
 	main.o \
+	llvm.o \
 	config.o \
 	load32bitOShack.o \
 	pc_system.o \
@@ -146,6 +148,7 @@ NONINLINE_OBJS = \
 
 EXTERN_ENVIRONMENT_OBJS = \
 	main.o \
+	llvm.o \
 	config.o \
 	load32bitOShack.o \
 	pc_system.o
@@ -168,9 +171,11 @@ BX_INCLUDES = bochs.h config.h osdep.h
 	$(CXX) @DASH@c $(BX_INCDIRS) $(CXXFLAGS) @CXXFP@$< @OFP@$@
 .c.o:
 	$(CC) @DASH@c $(BX_INCDIRS) $(CFLAGS) $(FPU_FLAGS) $< @OFP@$@
+.@CPP_SUFFIX@.bc:
+	$(CXX) @DASH@c $(BX_INCDIRS) $(CXXFLAGS) @CXXFP@$< @OFP@$@ -emit-llvm
 
 
-all: @PRIMARY_TARGET@ @PLUGIN_TARGET@ bximage@EXE@ bxcommit@EXE@ @BUILD_DOCBOOK_VAR@
+all: @PRIMARY_TARGET@ @PLUGIN_TARGET@ bximage@EXE@ bxcommit@EXE@ @BUILD_DOCBOOK_VAR@ llvmcpu.bc
 
 @EXTERNAL_DEPENDENCY@
 
@@ -179,15 +184,25 @@ bochs@EXE@: @IODEV_LIB_VAR@ @DEBUGGER_VAR@ \
            @DISASM_VAR@ @INSTRUMENT_VAR@ $(BX_OBJS) \
            $(SIMX86_OBJS) @FPU_VAR@ @GDBSTUB_VAR@ @PLUGIN_VAR@
 	@LINK@ @EXPORT_DYNAMIC@ $(BX_OBJS) $(SIMX86_OBJS) \
-		@IODEV_LIB_VAR@ @DEBUGGER_VAR@ cpu/libcpu.a memory/libmemory.a gui/libgui.a \
-		@DISASM_VAR@ @INSTRUMENT_VAR@ @PLUGIN_VAR@ \
-		@GDBSTUB_VAR@ @FPU_VAR@ \
+		@IODEV_LIB_VAR@ @DEBUGGER_VAR@  memory/libmemory.a gui/libgui.a \
+		disasm/*.o @INSTRUMENT_VAR@ @PLUGIN_VAR@ \
+		@GDBSTUB_VAR@  \
 		@NONPLUGIN_GUI_LINK_OPTS@ \
 		$(MCH_LINK_FLAGS) \
 		$(SIMX86_LINK_FLAGS) \
 		$(READLINE_LIB) \
 		$(EXTRA_LINK_OPTS) \
 		$(LIBS)
+
+llvmcpu.bc: cpu/libcpu.bc fpu/libfpu.bc llvm-init.bc
+	llvm-ld -r $^ -o $@
+
+cpu/libcpu.bc:
+	$(MAKE) -C cpu libcpu.bc
+
+fpu/libfpu.bc:
+	$(MAKE) -C fpu libfpu.bc
+
 
 # Special make target for cygwin/mingw using dlltool instead of
 # libtool.  This creates a .DEF file, and exports file, an import library,

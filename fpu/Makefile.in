@@ -15,6 +15,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 @SUFFIX_LINE@
+.SUFFIXES : .bc
 
 srcdir = @srcdir@
 VPATH = @srcdir@
@@ -54,6 +55,15 @@ all: libfpu.a
 
 .c.o:
 	$(CC) @DASH@c $(CFLAGS) $(BX_INCDIRS) $< @OFP@$@
+
+.cc.bc:
+	$(CXX) -c $(BX_INCDIRS) $(CXXFLAGS) $< -o $@ -emit-llvm
+
+BCFILES = $(OBJS:.o=.bc)
+
+libfpu.bc: $(BCFILES)
+	rm -f  $@
+	llvm-ld -r $(BCFILES) -o $@ 
 
 
 libfpu.a: $(OBJS)

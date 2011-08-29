@@ -25,6 +25,8 @@
 #include "iodev/iodev.h"
 #define LOG_THIS bx_pc_system.
 
+#include "llvm.h"
+
 #ifdef WIN32
 #ifndef __MINGW32__
 // #include <winsock2.h> // +++
@@ -93,7 +95,7 @@ void bx_pc_system_c::set_INTR(bx_bool value)
 {
   if (bx_dbg.interrupts)
     BX_INFO(("pc_system: Setting INTR=%d on bootstrap processor %d", (int)value, BX_BOOTSTRAP_PROCESSOR));
-  BX_CPU(BX_BOOTSTRAP_PROCESSOR)->set_INTR(value);
+  BX_CPU_METHOD(set_INTR)(value); //BX_CPU(BX_BOOTSTRAP_PROCESSOR)->set_INTR(value);
 }
 
 //
@@ -172,13 +174,13 @@ bx_bool bx_pc_system_c::get_enable_a20(void)
 void bx_pc_system_c::MemoryMappingChanged(void)
 {
   for (unsigned i=0; i<BX_SMP_PROCESSORS; i++)
-    BX_CPU(i)->TLB_flush();
+    BX_CPU_METHOD(TLB_flush)(); //BX_CPU(i)->TLB_flush();
 }
 
 void bx_pc_system_c::invlpg(bx_address addr)
 {
   for (unsigned i=0; i<BX_SMP_PROCESSORS; i++)
-    BX_CPU(i)->TLB_invlpg(addr);
+    BX_CPU_METHOD(TLB_invlpg)(addr); //BX_CPU(i)->TLB_invlpg(addr);
 }
 
 int bx_pc_system_c::Reset(unsigned type)
@@ -190,7 +192,7 @@ int bx_pc_system_c::Reset(unsigned type)
 
   // Always reset cpu
   for (int i=0; i<BX_SMP_PROCESSORS; i++) {
-    BX_CPU(i)->reset(type);
+    BX_CPU_METHOD(reset)(type); //BX_CPU(i)->reset(type);
   }
 
   // Reset devices only on Hardware resets

@@ -433,7 +433,7 @@ class BX_MEM_C;
 BOCHSAPI extern BX_CPU_C **bx_cpu_array;
 #else
 // single processor simulation, so there's one of everything
-BOCHSAPI extern BX_CPU_C   bx_cpu;
+BOCHSAPI extern BX_CPU_C*   bx_cpu_ptr;
 #endif
 
 // accessors for all eflags in bx_flags_reg_t

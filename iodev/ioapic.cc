@@ -30,6 +30,10 @@
 
 #include "ioapic.h"
 
+#include "bochs.h"
+#include "cpu/cpu.h"
+#include "llvm.h"
+
 #define LOG_THIS theIOAPIC->
 
 bx_ioapic_c *theIOAPIC = NULL;
@@ -268,7 +272,8 @@ void bx_ioapic_c::service_ioapic()
         } else {
           vector = entry->vector();
         }
-        bx_bool done = apic_bus_deliver_interrupt(vector, entry->destination(), entry->delivery_mode(), entry->destination_mode(), entry->pin_polarity(), entry->trigger_mode());
+        // bx_bool done = apic_bus_deliver_interrupt(vector, entry->destination(), entry->delivery_mode(), entry->destination_mode(), entry->pin_polarity(), entry->trigger_mode());
+        bx_bool done = (*bx_cpu_methods.apic_bus_deliver_interrupt)(vector, entry->destination(), entry->delivery_mode(), entry->destination_mode(), entry->pin_polarity(), entry->trigger_mode());
         if (done) {
           if (! entry->trigger_mode())
             irr &= ~mask;

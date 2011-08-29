@@ -1,0 +1,3 @@
+./configure CXX=clang++ CXXFLAGS="$(llvm-config --cxxflags)" LDFLAGS="$(llvm-config --ldflags) $(llvm-config --libs all)" --prefix=/home/larsr/sw/bochs --without-x11 --with-term
+
+# and compile without cpu/libcpu.a  fpu/libfpu.a and include disasm/*.o instead of disasm/libdisasm.a

@@ -29,6 +29,7 @@
 #include "cpu/cpu.h"
 #include "iodev/iodev.h"
 #define LOG_THIS genlog->
+#include "llvm.h"
 
 static void bx_load_linux_hack(void);
 static void bx_load_null_kernel_hack(void);
@@ -212,7 +213,8 @@ void bx_load_linux_hack(void)
   // BX_CPU(0)->cr0.pe = 1;
   // BX_CPU(0)->cr0.val32 |= 0x01;
 
-  if (! BX_CPU(0)->SetCR0(BX_CPU(0)->cr0.val32 | 0x01)) {
+  //  if (! BX_CPU(0)->SetCR0(BX_CPU(0)->cr0.val32 | 0x01)) {
+  if (! BX_CPU_METHOD(SetCR0)(BX_CPU(0)->cr0.val32 | 0x01)) {
     BX_INFO(("bx_load_linux_hack: can't enable protected mode in CR0"));
     BX_EXIT(1);
   }
@@ -225,7 +227,7 @@ void bx_load_linux_hack(void)
   BX_CPU(0)->gdtr.base  = 0x00090400;
 
   // Jump to protected mode entry point
-  BX_CPU(0)->jump_protected(NULL, 0x10, 0x100000);
+  BX_CPU_METHOD(jump_protected)(NULL, 0x10, 0x100000); //BX_CPU(0)->jump_protected(NULL, 0x10, 0x100000);
 }
 
 void bx_load_null_kernel_hack(void)
@@ -253,7 +255,7 @@ void bx_load_null_kernel_hack(void)
   // CR0 deltas
   BX_CPU(0)->cr0.set_PE(1); // protected mode
 
-  BX_CPU(0)->handleCpuModeChange();
+  BX_CPU_METHOD(handleCpuModeChange)(); //BX_CPU(0)->handleCpuModeChange();
 }
 
 Bit32u bx_load_kernel_image(char *path, Bit32u paddr)

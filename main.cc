@@ -31,6 +31,8 @@
 #include <locale.h>
 #endif
 
+#include "llvm.h"
+
 #if BX_WITH_SDL
 // since SDL redefines main() to SDL_main(), we must include SDL.h so that the
 // C language prototype is found.  Otherwise SDL_main() will get its name
@@ -97,7 +99,7 @@ typedef BX_CPU_C *BX_CPU_C_PTR;
 BOCHSAPI BX_CPU_C_PTR *bx_cpu_array = NULL;
 #else
 // single processor simulation, so there's one of everything
-BOCHSAPI BX_CPU_C bx_cpu;
+BOCHSAPI BX_CPU_C* bx_cpu_ptr;
 #endif
 
 BOCHSAPI BX_MEM_C bx_mem;
@@ -253,6 +255,14 @@ void print_tree(bx_param_c *node, int level)
 #endif
 
 int bxmain (void) {
+
+  int llvm_main(int n);
+
+
+  printf("LLVM_main got %d\n", llvm_main(23));
+
+
+
 #ifdef HAVE_LOCALE_H
   // Initialize locale (for isprint() and other functions)
   setlocale (LC_ALL, "");
@@ -933,7 +943,9 @@ int bx_begin_simulation (int argc, char *argv[])
       // only one processor, run as fast as possible by not messing with
       // quantums and loops.
       while (1) {
-        BX_CPU(0)->cpu_loop(0);
+        //BX_CPU(0)->cpu_loop(0);
+        //BX_CPU(0)->CPU_METHOD(cpu_loop)(0);
+	BX_CPU_METHOD(cpu_loop)(0);
         if (bx_pc_system.kill_bochs_request)
           break;
       }
@@ -976,7 +988,7 @@ void bx_stop_simulation(void)
 void bx_sr_after_restore_state(void)
 {
 #if BX_SUPPORT_SMP == 0
-  BX_CPU(0)->after_restore_state();
+  BX_CPU_METHOD(after_restore_state)(); //BX_CPU(0)->after_restore_state();
 #else
   for (unsigned i=0; i<BX_SMP_PROCESSORS; i++) {
     BX_CPU(i)->after_restore_state();
@@ -1140,9 +1152,9 @@ void bx_init_hardware()
     BX_MEM(0)->load_RAM(SIM->get_param_string(BXPN_OPTRAM4_PATH)->getptr(), SIM->get_param_num(BXPN_OPTRAM4_ADDRESS)->get(), 2);
 
 #if BX_SUPPORT_SMP == 0
-  BX_CPU(0)->initialize();
-  BX_CPU(0)->sanity_checks();
-  BX_CPU(0)->register_state();
+  BX_CPU_METHOD(initialize)(); //BX_CPU(0)->initialize();
+  BX_CPU_METHOD(sanity_checks)(); //BX_CPU(0)->sanity_checks();
+  BX_CPU_METHOD(register_state)(); //BX_CPU(0)->register_state();
   BX_INSTR_INITIALIZE(0);
 #else
   bx_cpu_array = new BX_CPU_C_PTR[BX_SMP_PROCESSORS];
@@ -1217,7 +1229,7 @@ int bx_atexit(void)
 #if BX_SUPPORT_SMP
       if (BX_CPU(cpu))
 #endif
-        BX_CPU(cpu)->atexit();
+        BX_CPU_METHOD(atexit)(); //BX_CPU(cpu)->atexit();
   }
 #endif
 
