@@ -32,7 +32,7 @@ class bxPageWriteStampTable
   Bit32u *fineGranularityMapping;
 
 public:
-  bxPageWriteStampTable() {
+  void initbxPageWriteStampTable() {
     fineGranularityMapping = new Bit32u[PHY_MEM_PAGES];
     resetWriteStamps();
   }

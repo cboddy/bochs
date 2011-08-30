@@ -31,5 +31,6 @@ extern "C" {
     bx_cpu_methods.decWriteStamp1 = &bxPageWriteStampTable::decWriteStamp1;
     bx_cpu_methods.decWriteStamp = &bxPageWriteStampTable::decWriteStamp;
 
+    pageWriteStampTable.initbxPageWriteStampTable();
   }
 }
