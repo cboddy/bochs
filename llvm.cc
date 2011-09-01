@@ -38,6 +38,7 @@ int llvm_main(int n)
 
   OwningPtr<MemoryBuffer> buffer;
 
+  cout << "Loading and JIT-compiling llvmcpu.bc." << endl;
   if (error_code ec = MemoryBuffer::getFile("llvmcpu.bc", buffer)) {
   } else {
     std::string ParseErrorMessage;
@@ -47,17 +48,15 @@ int llvm_main(int n)
       Function* func = ee->FindFunctionNamed("llvm_init");
 
       if(func) {
-
 	typedef void (*PFN2)(void);
-
 	PFN2 llvm_init = reinterpret_cast<PFN2>(ee->getPointerToFunction(func));
-	cout << "#################################      " << bx_cpu_ptr << "\n";
 	llvm_init();
-	cout << "#################################      " << bx_cpu_ptr << "\n";
-	cout << "#################################      " << bx_cpu_methods.cpu_loop << "\n";
+	cout << "Done." << endl;
+	return 0;
       } 
     }
   }
-  return 0;
+  cout << "ERROR" << endl;
+  return 1;
 }
 
