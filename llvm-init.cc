@@ -6,6 +6,8 @@
 
 extern BOCHSAPI BX_CPU_C* bx_cpu_ptr;
 
+void apic_bus_deliver_smi(void);
+
 extern "C" {
 
   void llvm_init() {
@@ -24,6 +26,7 @@ extern "C" {
     bx_cpu_methods.TLB_invlpg = &BX_CPU_C::TLB_invlpg;
     bx_cpu_methods.reset = &BX_CPU_C::reset;
     
+    bx_cpu_methods.apic_bus_deliver_smi = &apic_bus_deliver_smi;
     bx_cpu_methods.apic_bus_deliver_interrupt = &apic_bus_deliver_interrupt;
     bx_cpu_methods.handleSMC = &handleSMC;
     bx_cpu_methods.pageWriteStampTable = &pageWriteStampTable;

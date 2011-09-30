@@ -19,6 +19,7 @@ typedef struct {
   void (BX_CPU_C::*TLB_invlpg)(bx_address laddr);
   void (BX_CPU_C::*reset)(unsigned source);
 
+  void (*apic_bus_deliver_smi)(void);
   int (*apic_bus_deliver_interrupt)(Bit8u vector, apic_dest_t dest, Bit8u delivery_mode, bx_bool logical_dest, bx_bool level, bx_bool trig_mode);
   void (*handleSMC)(bx_phy_address pAddr, Bit32u mask);
 
