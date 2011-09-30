@@ -30,6 +30,9 @@
 
 #include "iodev.h"
 
+#include "cpu/cpu.h"
+#include "llvm.h"
+
 #if BX_SUPPORT_PCI && BX_SUPPORT_ACPI
 
 #include "pci.h"
@@ -291,7 +294,7 @@ void bx_acpi_ctrl_c::generate_smi(Bit8u value)
   }
 
   if (BX_ACPI_THIS s.pci_conf[0x5b] & 0x02) {
-    apic_bus_deliver_smi();
+    (*bx_cpu_methods.apic_bus_deliver_smi)();
   }
 }
 
