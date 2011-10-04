@@ -5,6 +5,11 @@
 #include "cpu/instr.h"
 
 typedef struct {
+  char pad1[80];
+
+  void (bxPageWriteStampTable::*decWriteStamp1)(bx_phy_address pAddr);
+  void (bxPageWriteStampTable::*decWriteStamp)(bx_phy_address pAddr, unsigned len);
+
   void (BX_CPU_C::*cpu_loop)(Bit32u);
   void (BX_CPU_C::*initialize)(void);
   void (BX_CPU_C::*sanity_checks)(void);
@@ -18,14 +23,17 @@ typedef struct {
   void (BX_CPU_C::*TLB_flush)(void);
   void (BX_CPU_C::*TLB_invlpg)(bx_address laddr);
   void (BX_CPU_C::*reset)(unsigned source);
+  bx_bool (BX_CPU_C::*dbg_xlate_linear2phy)(bx_address laddr, bx_phy_address *phy, bx_bool verbose);
+  void (BX_CPU_C::*invalidate_prefetch_q)(void);
+  Bit32u (BX_CPU_C::*read_eflags)(void);
 
   void (*apic_bus_deliver_smi)(void);
   int (*apic_bus_deliver_interrupt)(Bit8u vector, apic_dest_t dest, Bit8u delivery_mode, bx_bool logical_dest, bx_bool level, bx_bool trig_mode);
   void (*handleSMC)(bx_phy_address pAddr, Bit32u mask);
 
   bxPageWriteStampTable *pageWriteStampTable;
-  void (bxPageWriteStampTable::*decWriteStamp1)(bx_phy_address pAddr);
-  void (bxPageWriteStampTable::*decWriteStamp)(bx_phy_address pAddr, unsigned len);
+
+  char pad2[80];
 
 } cpu_methods;
 

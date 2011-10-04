@@ -42,6 +42,10 @@
 #include "cpu/cpu.h"
 #include "iodev/iodev.h"
 
+#include "llvm.h"
+#undef BX_CPU_THIS_PTR
+#define BX_CPU_THIS_PTR bx_cpu_ptr ->
+
 #define LOG_THIS gdbstublog->
 #define IFDBG(x) x
 
@@ -415,7 +419,7 @@ static int access_linear(Bit64u laddress,
     return(valid);
   }
 
-  valid = BX_CPU(0)->dbg_xlate_linear2phy(laddress, (bx_phy_address*)&phys);
+  valid = BX_CPU_METHOD(dbg_xlate_linear2phy)(laddress, (bx_phy_address*)&phys, 0);
   if (!valid) return(0);
 
   if (rw & 1) {
@@ -453,7 +457,12 @@ static void debug_loop(void)
           BX_INFO(("continuing at %x", new_eip));
 
           for (int i=0; i<BX_SMP_PROCESSORS; i++) {
-            BX_CPU(i)->invalidate_prefetch_q();
+            //BX_CPU(i)->invalidate_prefetch_q();
+	    BX_CPU_METHOD(invalidate_prefetch_q)(); // BUG should invalidate on all cores!
+	    if(i>0) {
+	      // ERROR
+	      i=i/(1-i); // just a divition by zero exception in case we get here
+	    }
           }
 
           saved_eip = EIP;
@@ -461,13 +470,13 @@ static void debug_loop(void)
         }
 
         stub_trace_flag = 0;
-        bx_cpu.cpu_loop(0);
+        BX_CPU_METHOD(cpu_loop)(0);
 
         DEV_vga_refresh();
 
         if (buffer[1] != 0)
         {
-          bx_cpu.invalidate_prefetch_q();
+          BX_CPU_METHOD(invalidate_prefetch_q)();
           BX_CPU_THIS_PTR gen_reg[BX_32BIT_REG_EIP].dword.erx = saved_eip;
         }
 
@@ -492,7 +501,7 @@ static void debug_loop(void)
 
         BX_INFO(("stepping"));
         stub_trace_flag = 1;
-        bx_cpu.cpu_loop(0);
+        BX_CPU_METHOD(cpu_loop)(0);
         DEV_vga_refresh();
         stub_trace_flag = 0;
         BX_INFO(("stopped with %x", last_stop_reason));
@@ -606,7 +615,7 @@ static void debug_loop(void)
 
           case 8:
             EIP = value;
-            BX_CPU_THIS_PTR invalidate_prefetch_q();
+            BX_CPU_METHOD(invalidate_prefetch_q)();
             break;
 
           default:
@@ -681,7 +690,7 @@ static void debug_loop(void)
 
           case 16:
             RIP = value;
-            BX_CPU_THIS_PTR invalidate_prefetch_q();
+            BX_CPU_METHOD(invalidate_prefetch_q)();
             break;
 
           default:
@@ -713,7 +722,7 @@ static void debug_loop(void)
           WriteHostDWordToLittleEndian(registers + 8, EIP);
         }
         WriteHostDWordToLittleEndian(registers + 9,
-                                     BX_CPU_THIS_PTR read_eflags());
+                                     BX_CPU_METHOD(read_eflags)());
         WriteHostDWordToLittleEndian(registers + 10,
           BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].selector.value);
         WriteHostDWordToLittleEndian(registers + 11,
@@ -756,7 +765,7 @@ static void debug_loop(void)
           ++rip;
         }
         PUTREG(buf, rip, 8);
-        PUTREG(buf, BX_CPU_THIS_PTR read_eflags(), 4);
+        PUTREG(buf, BX_CPU_METHOD(read_eflags)(), 4);
         PUTREG(buf, BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].selector.value, 4);
         PUTREG(buf, BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].selector.value, 4);
         PUTREG(buf, BX_CPU_THIS_PTR sregs[BX_SEG_REG_DS].selector.value, 4);
@@ -937,5 +946,5 @@ void bx_gdbstub_init(void)
   debug_loop();
 
   /* CPU loop */
-  bx_cpu.cpu_loop(0);
+  BX_CPU_METHOD(cpu_loop)(0);
 }

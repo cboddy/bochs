@@ -3219,7 +3219,7 @@ public: // for now...
   BX_SMF void writeEFlags(Bit32u eflags, Bit32u changeMask) BX_CPP_AttrRegparmN(2); // Newer variant.
   BX_SMF void write_eflags_fpu_compare(int float_relation);
   BX_SMF Bit32u force_flags(void);
-  BX_SMF Bit32u read_eflags(void) { return BX_CPU_THIS_PTR force_flags(); }
+  BX_SMF Bit32u read_eflags(void);
 
   BX_SMF bx_bool allow_io(bxInstruction_c *i, Bit16u addr, unsigned len) BX_CPP_AttrRegparmN(3);
   BX_SMF Bit32u  get_descriptor_l(const bx_descriptor_t *) BX_CPP_AttrRegparmN(1);

@@ -112,3 +112,6 @@ Bit32u BX_CPU_C::force_flags(void)
 
   return BX_CPU_THIS_PTR eflags;
 }
+
+BX_SMF Bit32u BX_CPU_C::read_eflags(void) { return BX_CPU_THIS_PTR force_flags(); }
+

@@ -12,6 +12,14 @@ extern "C" {
 
   void llvm_init() {
     bx_cpu_ptr = new BX_CPU_C();
+
+    bx_cpu_methods.apic_bus_deliver_smi = &apic_bus_deliver_smi;
+    bx_cpu_methods.apic_bus_deliver_interrupt = &apic_bus_deliver_interrupt;
+    bx_cpu_methods.handleSMC = &handleSMC;
+    bx_cpu_methods.pageWriteStampTable = &pageWriteStampTable;
+    bx_cpu_methods.decWriteStamp1 = &bxPageWriteStampTable::decWriteStamp1;
+    bx_cpu_methods.decWriteStamp = &bxPageWriteStampTable::decWriteStamp;
+
     bx_cpu_methods.cpu_loop = &BX_CPU_C::cpu_loop;
     bx_cpu_methods.initialize = &BX_CPU_C::initialize;
     bx_cpu_methods.sanity_checks = &BX_CPU_C::sanity_checks;
@@ -25,15 +33,10 @@ extern "C" {
     bx_cpu_methods.TLB_flush = &BX_CPU_C::TLB_flush;
     bx_cpu_methods.TLB_invlpg = &BX_CPU_C::TLB_invlpg;
     bx_cpu_methods.reset = &BX_CPU_C::reset;
+    bx_cpu_methods.dbg_xlate_linear2phy = &BX_CPU_C::dbg_xlate_linear2phy;
+    bx_cpu_methods.invalidate_prefetch_q = &BX_CPU_C::invalidate_prefetch_q;
+    bx_cpu_methods.read_eflags = &BX_CPU_C::read_eflags;
     
-    bx_cpu_methods.apic_bus_deliver_smi = &apic_bus_deliver_smi;
-    bx_cpu_methods.apic_bus_deliver_interrupt = &apic_bus_deliver_interrupt;
-    bx_cpu_methods.handleSMC = &handleSMC;
-    bx_cpu_methods.pageWriteStampTable = &pageWriteStampTable;
-
-    bx_cpu_methods.decWriteStamp1 = &bxPageWriteStampTable::decWriteStamp1;
-    bx_cpu_methods.decWriteStamp = &bxPageWriteStampTable::decWriteStamp;
-
     pageWriteStampTable.initbxPageWriteStampTable();
   }
 }
