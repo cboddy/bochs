@@ -4,3 +4,6 @@
 
 # and strip off the debug info from the .bc file (or remove the -g flags from CXXFLAGS in [fc]pu/Makefile)
 # because a bug in llvm makes the jit:ing fail (it can't find some symbols)
+
+# how a working bochs was built
+find . -name \*.bc | xargs rm ; ./configure CXX=clang++ CXXFLAGS="$(llvm-config --cxxflags)" LDFLAGS="$(llvm-config --ldflags) $(llvm-config --libs all)" --prefix=/home/larsr/sw/bochs --without-x11 --with-term --enable-gdb-stub --enable-pci --enable-all-optimizations; time make -j8
