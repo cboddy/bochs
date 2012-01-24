@@ -136,6 +136,46 @@ void BX_CPU_C::cpu_loop(Bit32u max_instr_count)
       }
 #endif
 
+/* from System.map
+c11ca0e0 T security_file_permission
+c11ca180 T security_file_alloc
+c11ca1a0 T security_file_free
+c11ca1c0 T security_file_ioctl
+c11ca1e0 T security_file_mmap
+c11ca230 T security_file_mprotect
+c11ca250 T security_file_lock
+c11ca270 T security_file_fcntl
+c11ca290 T security_file_set_fowner
+c11ca2b0 T security_file_send_sigiotask
+c11ca2d0 T security_file_receive
+*/
+
+      if(RIP == 0xc11ca1e0) {
+	BX_INFO( ("RIP == security_file_mmap") );
+	/*
+	kmalloc(size, flags | __GFP_ZERO);
+	c10e9510 T __kmalloc
+	c10f1e80 T kernel_read
+	c10e8930 T kfree
+	file->f_dentry->d_name.name
+
+	rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	offset = 0;
+	while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
+		offset += n;
+		// update crypto
+	}
+	kfree(rbuf);
+	*/
+      }
+
+    if(RIP ==  0xc11e5aa0) {
+	BX_INFO( ("RIP == process_measurement\n") );
+        bx_phy_address phys;
+	BX_CPU_THIS_PTR  dbg_xlate_linear2phy( EDX, &phys, 0);
+	char  * data = (char*) BX_MEM(0)->get_vector(phys);
+	BX_INFO( ( "filename = '%s' ", data ) );
+    }
       // instruction decoding completed -> continue with execution
       // want to allow changing of the instruction inside instrumentation callback
       BX_INSTR_BEFORE_EXECUTION(BX_CPU_ID, i);
