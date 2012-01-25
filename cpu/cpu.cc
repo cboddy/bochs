@@ -72,6 +72,14 @@ static unsigned iCacheMisses=0;
   #define CHECK_MAX_INSTRUCTIONS(count)
 #endif
 
+// Guest to host address translation
+inline Bit8u* g2h(bx_address gaddr)  {
+    bx_phy_address phys;
+    bx_cpu_ptr -> dbg_xlate_linear2phy(gaddr, &phys, 0);
+    Bit8u* haddr = BX_MEM(0)->get_vector(phys);
+    return haddr;
+  }
+
 void BX_CPU_C::cpu_loop(Bit32u max_instr_count)
 {
 #if BX_DEBUGGER
@@ -170,11 +178,15 @@ c11ca2d0 T security_file_receive
       }
 
     if(RIP ==  0xc11e5aa0) {
-	BX_INFO( ("RIP == process_measurement\n") );
+	BX_INFO( ("RIP == process_measurement") );
         bx_phy_address phys;
 	BX_CPU_THIS_PTR  dbg_xlate_linear2phy( EDX, &phys, 0);
 	char  * data = (char*) BX_MEM(0)->get_vector(phys);
 	BX_INFO( ( "filename = '%s' ", data ) );
+	bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
+	bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
+	char* name_h = (char*)g2h(name);
+	BX_INFO ( ( "filename2 = '%s'", name_h ) );
     }
       // instruction decoding completed -> continue with execution
       // want to allow changing of the instruction inside instrumentation callback
