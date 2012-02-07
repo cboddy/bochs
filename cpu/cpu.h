@@ -2840,6 +2840,7 @@ public: // for now...
 #endif
   BX_SMF void     atexit(void);
 
+  void BX_CPU_C::divert_execution(bx_address addr); 
   // now for some ancillary functions...
   BX_SMF void cpu_loop(Bit32u max_instr_count);
   BX_SMF unsigned handleAsyncEvent(void);

@@ -80,6 +80,18 @@ inline Bit8u* g2h(bx_address gaddr)  {
     return haddr;
   }
 
+
+void BX_CPU_C::divert_execution(bx_address addr) {
+  bxInstruction_c ii;
+  Bit8u code[5];
+
+  code[0]=0xe8;
+  *(bx_address*)&code[1] = addr - RIP;
+  fetchDecode32(code, &ii,sizeof(code));
+  BX_CPU_CALL_METHOD(ii.execute, (&ii));
+  // now we have pushed the return address (RIP) which is the SAME instruction, not the one after this instruction.
+}
+
 void BX_CPU_C::cpu_loop(Bit32u max_instr_count)
 {
 #if BX_DEBUGGER
@@ -161,33 +173,128 @@ c11ca2d0 T security_file_receive
       if(RIP == 0xc11ca1e0) {
 	BX_INFO( ("RIP == security_file_mmap") );
 	/*
-	kmalloc(size, flags | __GFP_ZERO);
-	c10e9510 T __kmalloc
-	c10f1e80 T kernel_read
-	c10e8930 T kfree
-	file->f_dentry->d_name.name
+	  kmalloc(size, flags | __GFP_ZERO);
+	  c10e9510 T __kmalloc
+	  c10f1e80 T kernel_read
+	  c10e8930 T kfree
+	  file->f_dentry->d_name.name
 
-	rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	offset = 0;
-	while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
-		offset += n;
-		// update crypto
-	}
-	kfree(rbuf);
+	  rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	  offset = 0;
+	  while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
+	  offset += n;
+	  // update crypto
+	  }
+	  kfree(rbuf);
 	*/
       }
 
-    if(RIP ==  0xc11e5aa0) {
-	BX_INFO( ("RIP == process_measurement") );
-        bx_phy_address phys;
-	BX_CPU_THIS_PTR  dbg_xlate_linear2phy( EDX, &phys, 0);
-	char  * data = (char*) BX_MEM(0)->get_vector(phys);
-	BX_INFO( ( "filename = '%s' ", data ) );
-	bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
-	bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
-	char* name_h = (char*)g2h(name);
-	BX_INFO ( ( "filename2 = '%s'", name_h ) );
-    }
+
+      static bx_address save[3], pageaddress=0;
+      static int in_subfunction = 0;
+      static int trace = 0;
+
+      if(RIP ==  0xc11e5aa0) {
+
+	// change the execution to call kernel_read
+	// and then continue from this address
+	
+	if( in_subfunction == 0 ) {
+	  // look up data in the guest memory by dereferencing struct pointers
+	  char* fname = (char*)g2h(EDX);
+
+	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
+	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
+	  char* name_h = (char*)g2h(name);
+	  BX_INFO( ("RIP == process_measurement %d '%s' %s'", in_subfunction, fname, name_h) );
+	} else {
+	  BX_INFO( ("RIP == process_measurement %d", in_subfunction) );
+	}
+
+	if(in_subfunction == 0 && pageaddress == 0) {
+
+	  if(1) {
+	    BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace") );
+	    // enter the sub function
+	    in_subfunction = 1;
+
+	    // rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	    //   0xc11e5e11:  mov    0xc1983150,%eax
+	    //   ...
+	    //   0xc11e5e1e:  mov    $0x1000,%ecx
+	    //   0xc11e5e23:  mov    $0x80d0,%edx
+	    //   0xc11e5e28:  call   0xc10e91c0    //   void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
+	    //   0xc11e5e28:     0xe8    0x93    0x33    0xf0    0xff
+	    //   0xfff03393 + 0xc11e5e28 + 5 == 0xc10e91c0
+   //	    bxInstruction_c ii;
+   //	    Bit8u code[5];
+
+	    save[0] = EAX; save[1] = ECX; save[2] = EDX;
+	    EAX = *(Bit32u*)g2h(0xc1983150);
+	    ECX = 0x1000;
+	    EDX = 0x80d0;
+
+	    divert_execution(0xc10e91c0);
+   /*
+	    code[0]=0xe8;
+	    *(bx_address*)&code[1] = 0xc10e91c0 - RIP; // - 5; // c10e91bb 
+	    fetchDecode32(code, &ii,sizeof(code));
+	    BX_CPU_CALL_METHOD(ii.execute, (&ii));
+	    // now we have pushed the return address (RIP) which is the SAME instruction, not the one after this instruction.
+    */
+
+
+	    // The error is that we don't return to 0xc11e5aa0 but to 0xc108d7be
+	    BX_INFO( ("EIP = %x", EIP) );
+	    trace = 0;
+	    entry = getICacheEntry();
+	    i = entry->i;
+	  }
+	} else if (in_subfunction == 1) {
+	  // came back from subfunction
+	  // restore and continue as usual
+	  BX_INFO( ("returning from subfunction call to kmem_cache_alloc_trace, EAX = %x", EAX) );
+	  pageaddress = EAX;
+#if 1
+	  // ok, the fun is over, call kfree with the pointer in EAX
+	  BX_INFO( ("Calling kfree") );
+	  // kfree(rbuf);
+	  // c10e8930 T kfree
+	  //    0xc11e5ecf:  call   0xc10e8930
+	  //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
+
+	  divert_execution(0xc10e8930);
+	  /*
+	  bxInstruction_c ii;
+	  Bit8u code[5];
+  
+	  code[0]=0xe8;
+	  *(bx_address*)&code[1] = 0xc10e8930 - RIP; // - 5;
+	  fetchDecode32(code, &ii,sizeof(code));
+	  BX_CPU_CALL_METHOD(ii.execute, (&ii));
+	  */
+
+	  entry = getICacheEntry();
+	  i = entry->i;
+
+
+	  in_subfunction = 2;
+	  trace = 0;
+	} else if (in_subfunction == 2) {
+	  BX_INFO( ("returning from subfunction call to kfree. ") );
+#endif
+	  BX_INFO( ("Restoring registers") );
+	  EAX=save[0]; ECX=save[1]; EDX=save[2];  // restore register values
+	  in_subfunction = 0;
+	  pageaddress = 0;
+	}
+      }
+
+      if ( trace > 0 ) {
+	BX_INFO( ("EIP = %x trace=%d", EIP, trace) );
+	trace--;
+      }
+
       // instruction decoding completed -> continue with execution
       // want to allow changing of the instruction inside instrumentation callback
       BX_INSTR_BEFORE_EXECUTION(BX_CPU_ID, i);
