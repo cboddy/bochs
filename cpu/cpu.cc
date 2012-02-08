@@ -81,6 +81,27 @@ inline Bit8u* g2h(bx_address gaddr)  {
   }
 
 
+
+typedef struct {
+  bx_address save[3];
+  bx_address pageaddress;
+  bx_address esp ;
+  int in_subfunction;
+} save_record;
+
+int find_record(save_record* r, int n, bx_address esp) {
+  int j = n;
+  for(int i=0; i<n; i++, r++) {
+    if(r->esp == esp) {
+      return i;
+    }
+    if (r->esp == 0 && j ==n) {
+      j = i; // found a free entry
+    }
+  }
+  return j;  // returns n if no match was made and no free record was found
+}
+
 void BX_CPU_C::divert_execution(bx_address addr) {
   bxInstruction_c ii;
   Bit8u code[5];
@@ -168,9 +189,12 @@ c11ca270 T security_file_fcntl
 c11ca290 T security_file_set_fowner
 c11ca2b0 T security_file_send_sigiotask
 c11ca2d0 T security_file_receive
-*/
+*/      
+      static save_record records[10];
+      static int trace = 0;
 
       if(RIP == 0xc11ca1e0) {
+
 	BX_INFO( ("RIP == security_file_mmap") );
 	/*
 	  kmalloc(size, flags | __GFP_ZERO);
@@ -189,73 +213,69 @@ c11ca2d0 T security_file_receive
 	*/
       }
 
-
-      static bx_address save[3], pageaddress=0;
-      static int in_subfunction = 0;
-      static int trace = 0;
-
       if(RIP ==  0xc11e5aa0) {
+
+	int ri = find_record(records, 10, ESP);
+	if( ri == 10 ) {
+	  BX_INFO (( "PANIC ERROR! No available save_records for injected call to kmem_cache_alloc_trace" ));
+	  return;
+	};
+	save_record& r = records[ri];
+	
+	if(r.esp==0) { // initialize
+	  r.esp = ESP;
+	  r.in_subfunction = 0;
+	}
 
 	// change the execution to call kernel_read
 	// and then continue from this address
 	
-	if( in_subfunction == 0 ) {
+	// some debug printouts
+	if( r.in_subfunction == 0 ) {
 	  // look up data in the guest memory by dereferencing struct pointers
 	  char* fname = (char*)g2h(EDX);
 
 	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
 	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
 	  char* name_h = (char*)g2h(name);
-	  BX_INFO( ("RIP == process_measurement %d '%s' %s'", in_subfunction, fname, name_h) );
+	  BX_INFO( ("RIP == process_measurement %d %x '%s' %s'", r.in_subfunction, EAX, fname, name_h) );
+	  BX_INFO( ("BEFORE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
 	} else {
-	  BX_INFO( ("RIP == process_measurement %d", in_subfunction) );
+	  BX_INFO( ("RIP == process_measurement %d", r.in_subfunction) );
+	  BX_INFO( ("INSIDE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
 	}
 
-	if(in_subfunction == 0 && pageaddress == 0) {
+	// the actual work cases
+	if(r.in_subfunction == 0) {
 
-	  if(1) {
-	    BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace") );
-	    // enter the sub function
-	    in_subfunction = 1;
+	  BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace") );
 
-	    // rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	    //   0xc11e5e11:  mov    0xc1983150,%eax
-	    //   ...
-	    //   0xc11e5e1e:  mov    $0x1000,%ecx
-	    //   0xc11e5e23:  mov    $0x80d0,%edx
-	    //   0xc11e5e28:  call   0xc10e91c0    //   void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
-	    //   0xc11e5e28:     0xe8    0x93    0x33    0xf0    0xff
-	    //   0xfff03393 + 0xc11e5e28 + 5 == 0xc10e91c0
-   //	    bxInstruction_c ii;
-   //	    Bit8u code[5];
+	  // This is what we want to inject:
+	  // rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	  //   0xc11e5e11:  mov    0xc1983150,%eax
+	  //   ...
+	  //   0xc11e5e1e:  mov    $0x1000,%ecx
+	  //   0xc11e5e23:  mov    $0x80d0,%edx
+	  //   0xc11e5e28:  call   0xc10e91c0    //   void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
+	  //   0xc11e5e28:     0xe8    0x93    0x33    0xf0    0xff
+	  //   0xfff03393 + 0xc11e5e28 + 5 == 0xc10e91c0
 
-	    save[0] = EAX; save[1] = ECX; save[2] = EDX;
-	    EAX = *(Bit32u*)g2h(0xc1983150);
-	    ECX = 0x1000;
-	    EDX = 0x80d0;
+	  r.save[0] = EAX; r.save[1] = ECX; r.save[2] = EDX;
+	  EAX = *(Bit32u*)g2h(0xc1983150);
+	  ECX = 0x1000;
+	  EDX = 0x80d0;
+	  divert_execution(0xc10e91c0);
 
-	    divert_execution(0xc10e91c0);
-   /*
-	    code[0]=0xe8;
-	    *(bx_address*)&code[1] = 0xc10e91c0 - RIP; // - 5; // c10e91bb 
-	    fetchDecode32(code, &ii,sizeof(code));
-	    BX_CPU_CALL_METHOD(ii.execute, (&ii));
-	    // now we have pushed the return address (RIP) which is the SAME instruction, not the one after this instruction.
-    */
+	  BX_INFO( ("EIP = %x", EIP) );
+	  trace = 1000;
 
+	  r.in_subfunction = 1;  // when we come back, to next step (at in_subfunction == 1)
+	  
+	} else if (r.in_subfunction == 1) {
 
-	    // The error is that we don't return to 0xc11e5aa0 but to 0xc108d7be
-	    BX_INFO( ("EIP = %x", EIP) );
-	    trace = 0;
-	    entry = getICacheEntry();
-	    i = entry->i;
-	  }
-	} else if (in_subfunction == 1) {
-	  // came back from subfunction
-	  // restore and continue as usual
 	  BX_INFO( ("returning from subfunction call to kmem_cache_alloc_trace, EAX = %x", EAX) );
-	  pageaddress = EAX;
-#if 1
+	  r.pageaddress = EAX;
+
 	  // ok, the fun is over, call kfree with the pointer in EAX
 	  BX_INFO( ("Calling kfree") );
 	  // kfree(rbuf);
@@ -264,34 +284,31 @@ c11ca2d0 T security_file_receive
 	  //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
 
 	  divert_execution(0xc10e8930);
-	  /*
-	  bxInstruction_c ii;
-	  Bit8u code[5];
-  
-	  code[0]=0xe8;
-	  *(bx_address*)&code[1] = 0xc10e8930 - RIP; // - 5;
-	  fetchDecode32(code, &ii,sizeof(code));
-	  BX_CPU_CALL_METHOD(ii.execute, (&ii));
-	  */
 
-	  entry = getICacheEntry();
-	  i = entry->i;
+	  r.in_subfunction = 2;  // when we come back, to next step (at in_subfunction == 2)
 
-
-	  in_subfunction = 2;
-	  trace = 0;
-	} else if (in_subfunction == 2) {
+	} else if (r.in_subfunction == 2) {
 	  BX_INFO( ("returning from subfunction call to kfree. ") );
-#endif
 	  BX_INFO( ("Restoring registers") );
-	  EAX=save[0]; ECX=save[1]; EDX=save[2];  // restore register values
-	  in_subfunction = 0;
-	  pageaddress = 0;
+	  EAX = r.save[0]; ECX = r.save[1]; EDX = r.save[2];  // restore register values
+
+	  r.esp = 0;
+	  r.in_subfunction = 0;
+	  r.pageaddress = 0;
 	}
+
+	entry = getICacheEntry();
+	i = entry->i;
+
       }
 
+
+      if(RIP ==  0xc11e5aa0) {
+	BX_INFO(("EIP = %x, EAX = %x",RIP, EAX));
+	BX_INFO( ("AFTER  EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
+      }
       if ( trace > 0 ) {
-	BX_INFO( ("EIP = %x trace=%d", EIP, trace) );
+	BX_INFO( ("EIP = %x     trace=%d", EIP, trace) );
 	trace--;
       }
 
