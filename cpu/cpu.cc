@@ -240,6 +240,7 @@ c11ca2d0 T security_file_receive
 	  r.offset = 0;
 	  r.rbuf = 0;
 
+#if 0
 	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
 	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
 	  char* name_h = (char*)g2h(name);
@@ -252,9 +253,10 @@ c11ca2d0 T security_file_receive
 	  if( name_h !=  (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28))) {BX_INFO(("ERROR 3 name_h %s:%d",__FILE__,__LINE__));}
 
 	  BX_INFO(("END   TEST"));
+#endif
 	}
 
-	// change the execution to call kernel_read
+	// change the execution to call kzalloc,kernel_read,kfree
 	// and then continue from this address
 	
 	// some debug printouts
@@ -307,8 +309,11 @@ c11ca2d0 T security_file_receive
 	  ECX = r.offset >> 32;
 	  EDX = r.offset & 0xffffffff;
 	  
+	  ESP -= 8;
+	  *(Bit32u*)g2h(ESP) =  0x1000; // count
+	  ESP -= 4;
 	  *(Bit32u*)g2h(ESP) =  r.rbuf;
-	  *(Bit32u*)g2h(ESP+4) =  0x1000; // count == PAGE_SIZE
+	  r.esp = ESP;
 
 	  divert_execution(0xc10f1e80);  // kernel_read
 
@@ -317,6 +322,9 @@ c11ca2d0 T security_file_receive
 	  BX_INFO( ("Calling kernel_read offset %lld file '%s'", r.offset, r.fname) );
 
 	} else if ( r.in_subfunction == 2 ) {
+
+	  ESP += 12;
+	  r.esp = ESP;
 	  
 	  int n = EAX;  // save return value
 	  BX_INFO( ("kernel_read read %d bytes at offset %lld in file '%s'", n, r.offset, r.fname) ) ;
@@ -332,9 +340,12 @@ c11ca2d0 T security_file_receive
 	    EAX = r.file;
 	    ECX = r.offset >> 32;
 	    EDX = r.offset & 0xffffffff;
-	    
+
+	    ESP -= 8;
+	    *(Bit32u*)g2h(ESP) =  0x1000; // count
+	    ESP -= 4;
 	    *(Bit32u*)g2h(ESP) =  r.rbuf;
-	    *(Bit32u*)g2h(ESP+4) =  0x1000; // count
+	    r.esp = ESP;
 
 	    divert_execution(0xc10f1e80);  // kernel_read
 
@@ -349,10 +360,11 @@ c11ca2d0 T security_file_receive
 	    // c10e8930 T kfree
 	    //    0xc11e5ecf:  call   0xc10e8930
 	    //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
-	    
+
+	    EAX = r.rbuf;
 	    divert_execution(0xc10e8930);
-	    
 	    r.in_subfunction = 3;  // when we come back, to next step (at in_subfunction == 3)
+	    
 	  }
 
 	} else if (r.in_subfunction == 3) {
@@ -362,6 +374,7 @@ c11ca2d0 T security_file_receive
 
 	  r.esp = 0;
 	  r.in_subfunction = 0;
+	  trace = 100;
 	}
 
 	entry = getICacheEntry();
