@@ -83,10 +83,14 @@ inline Bit8u* g2h(bx_address gaddr)  {
 
 
 typedef struct {
-  bx_address save[3];
-  bx_address pageaddress;
   bx_address esp ;
   int in_subfunction;
+  bx_address save[3];
+
+  bx_address file, rbuf;
+  long long offset; 
+  char* fname;
+
 } save_record;
 
 int find_record(save_record* r, int n, bx_address esp) {
@@ -213,7 +217,7 @@ c11ca2d0 T security_file_receive
 	*/
       }
 
-      if(RIP ==  0xc11e5aa0) {
+      if(RIP ==  0xc11e5aa0) {  // process_measurement
 
 	int ri = find_record(records, 10, ESP);
 	if( ri == 10 ) {
@@ -222,9 +226,32 @@ c11ca2d0 T security_file_receive
 	};
 	save_record& r = records[ri];
 	
+	BX_INFO(("ESP %x has record index %d", ESP, ri));
+
 	if(r.esp==0) { // initialize
 	  r.esp = ESP;
 	  r.in_subfunction = 0;
+
+// fetch the 4 byte word at the guest address x
+#define LOOKUP(x) (*(bx_address*)g2h(x))
+
+	  r.file = EAX;
+	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->name
+	  r.offset = 0;
+	  r.rbuf = 0;
+
+	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
+	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
+	  char* name_h = (char*)g2h(name);
+	  
+	  BX_INFO(("BEGIN TEST"));
+
+	  if( dentry != LOOKUP(EAX+12) ) {BX_INFO(("ERROR 1 dentry %s:%d",__FILE__,__LINE__));}
+	  if( name   != LOOKUP(dentry+28) ) {BX_INFO(("ERROR 2.1 name %s:%d",__FILE__,__LINE__));}
+	  if( name   != LOOKUP(LOOKUP(EAX+12)+28) ) {BX_INFO(("ERROR 2.1 name %s:%d",__FILE__,__LINE__));}
+	  if( name_h !=  (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28))) {BX_INFO(("ERROR 3 name_h %s:%d",__FILE__,__LINE__));}
+
+	  BX_INFO(("END   TEST"));
 	}
 
 	// change the execution to call kernel_read
@@ -233,12 +260,8 @@ c11ca2d0 T security_file_receive
 	// some debug printouts
 	if( r.in_subfunction == 0 ) {
 	  // look up data in the guest memory by dereferencing struct pointers
-	  char* fname = (char*)g2h(EDX);
-
-	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
-	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
-	  char* name_h = (char*)g2h(name);
-	  BX_INFO( ("RIP == process_measurement %d %x '%s' %s'", r.in_subfunction, EAX, fname, name_h) );
+	  char* fname = (char*)g2h(EDX);  // you can also get the name from arg 3
+	  BX_INFO( ("RIP == process_measurement %d %x '%s' '%s'", r.in_subfunction, EAX, fname, r.fname) );
 	  BX_INFO( ("BEFORE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
 	} else {
 	  BX_INFO( ("RIP == process_measurement %d", r.in_subfunction) );
@@ -246,9 +269,13 @@ c11ca2d0 T security_file_receive
 	}
 
 	// the actual work cases
-	if(r.in_subfunction == 0) {
+	if( strcmp(r.fname,"busybox") != 0) {
 
-	  BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace") );
+	  r.esp = 0; // free the save record and don't do anything.
+
+	} else if(r.in_subfunction == 0) {
+
+	  BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace '%s'", r.fname) );
 
 	  // This is what we want to inject:
 	  // rbuf = kzalloc(PAGE_SIZE, GFP_KERNEL);
@@ -264,37 +291,77 @@ c11ca2d0 T security_file_receive
 	  EAX = *(Bit32u*)g2h(0xc1983150);
 	  ECX = 0x1000;
 	  EDX = 0x80d0;
-	  divert_execution(0xc10e91c0);
+	  divert_execution(0xc10e91c0);  // kmem_cache_alloc_trace
 
-	  BX_INFO( ("EIP = %x", EIP) );
-	  trace = 1000;
+	  trace = 1;
 
 	  r.in_subfunction = 1;  // when we come back, to next step (at in_subfunction == 1)
 	  
 	} else if (r.in_subfunction == 1) {
 
 	  BX_INFO( ("returning from subfunction call to kmem_cache_alloc_trace, EAX = %x", EAX) );
-	  r.pageaddress = EAX;
+	  r.rbuf = EAX;
 
-	  // ok, the fun is over, call kfree with the pointer in EAX
-	  BX_INFO( ("Calling kfree") );
-	  // kfree(rbuf);
-	  // c10e8930 T kfree
-	  //    0xc11e5ecf:  call   0xc10e8930
-	  //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
+	  // while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
+	  EAX = r.file;
+	  ECX = r.offset >> 32;
+	  EDX = r.offset & 0xffffffff;
+	  
+	  *(Bit32u*)g2h(ESP) =  r.rbuf;
+	  *(Bit32u*)g2h(ESP+4) =  0x1000; // count == PAGE_SIZE
 
-	  divert_execution(0xc10e8930);
+	  divert_execution(0xc10f1e80);  // kernel_read
 
 	  r.in_subfunction = 2;  // when we come back, to next step (at in_subfunction == 2)
 
-	} else if (r.in_subfunction == 2) {
+	  BX_INFO( ("Calling kernel_read offset %lld file '%s'", r.offset, r.fname) );
+
+	} else if ( r.in_subfunction == 2 ) {
+	  
+	  int n = EAX;  // save return value
+	  BX_INFO( ("kernel_read read %d bytes at offset %lld in file '%s'", n, r.offset, r.fname) ) ;
+	  r.offset += n;
+
+	  if (n < 0) {
+	    BX_INFO( ("kernel_read returned error %d",n));
+	  }
+
+	  if ( n > 0 ) {
+
+	    // while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
+	    EAX = r.file;
+	    ECX = r.offset >> 32;
+	    EDX = r.offset & 0xffffffff;
+	    
+	    *(Bit32u*)g2h(ESP) =  r.rbuf;
+	    *(Bit32u*)g2h(ESP+4) =  0x1000; // count
+
+	    divert_execution(0xc10f1e80);  // kernel_read
+
+	    r.in_subfunction = 2;  // when we come back, continue to read (at in_subfunction == 2)
+
+	  } else {
+
+	   
+	    // ok, the fun is over, call kfree with the pointer in EAX
+	    BX_INFO( ("Calling kfree") );
+	    // kfree(rbuf);
+	    // c10e8930 T kfree
+	    //    0xc11e5ecf:  call   0xc10e8930
+	    //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
+	    
+	    divert_execution(0xc10e8930);
+	    
+	    r.in_subfunction = 3;  // when we come back, to next step (at in_subfunction == 3)
+	  }
+
+	} else if (r.in_subfunction == 3) {
 	  BX_INFO( ("returning from subfunction call to kfree. ") );
 	  BX_INFO( ("Restoring registers") );
 	  EAX = r.save[0]; ECX = r.save[1]; EDX = r.save[2];  // restore register values
 
 	  r.esp = 0;
 	  r.in_subfunction = 0;
-	  r.pageaddress = 0;
 	}
 
 	entry = getICacheEntry();
