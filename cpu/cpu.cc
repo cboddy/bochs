@@ -80,6 +80,8 @@ inline Bit8u* g2h(bx_address gaddr)  {
     return haddr;
   }
 
+// fetch the 4 byte word at the guest address x
+#define LOOKUP(x) (*(bx_address*)g2h(x))
 
 
 typedef struct {
@@ -194,7 +196,8 @@ c11ca290 T security_file_set_fowner
 c11ca2b0 T security_file_send_sigiotask
 c11ca2d0 T security_file_receive
 */      
-      static save_record records[10];
+#define N_SAVE_RECORDS 100
+      static save_record records[N_SAVE_RECORDS];
       static int trace = 0;
 
       if(RIP == 0xc11ca1e0) {
@@ -219,62 +222,41 @@ c11ca2d0 T security_file_receive
 
       if(RIP ==  0xc11e5aa0) {  // process_measurement
 
-	int ri = find_record(records, 10, ESP);
-	if( ri == 10 ) {
+	int ri = find_record(records, N_SAVE_RECORDS, ESP);
+	if( ri == N_SAVE_RECORDS ) {
 	  BX_INFO (( "PANIC ERROR! No available save_records for injected call to kmem_cache_alloc_trace" ));
 	  return;
 	};
 	save_record& r = records[ri];
-	
-	BX_INFO(("ESP %x has record index %d", ESP, ri));
+	BX_INFO(("save_record %d",ri));
 
-	if(r.esp==0) { // initialize
+	for(int j = 0; j < N_SAVE_RECORDS; j++) {
+	  if(records[j].esp != 0)  {
+	    BX_INFO(("   records[%d] for '%s'", j, records[j].fname ));
+	  }
+	}
+	
+	if(r.esp == 0) { // initialize
 	  r.esp = ESP;
 	  r.in_subfunction = 0;
 
-// fetch the 4 byte word at the guest address x
-#define LOOKUP(x) (*(bx_address*)g2h(x))
-
 	  r.file = EAX;
-	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->name
+	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->d_iname
 	  r.offset = 0;
 	  r.rbuf = 0;
-
-#if 0
-	  bx_address dentry = *(bx_address*)g2h(EAX+12);  // guest address space
-	  bx_address name = *(bx_address*)g2h(dentry+28); // guest address space
-	  char* name_h = (char*)g2h(name);
-	  
-	  BX_INFO(("BEGIN TEST"));
-
-	  if( dentry != LOOKUP(EAX+12) ) {BX_INFO(("ERROR 1 dentry %s:%d",__FILE__,__LINE__));}
-	  if( name   != LOOKUP(dentry+28) ) {BX_INFO(("ERROR 2.1 name %s:%d",__FILE__,__LINE__));}
-	  if( name   != LOOKUP(LOOKUP(EAX+12)+28) ) {BX_INFO(("ERROR 2.1 name %s:%d",__FILE__,__LINE__));}
-	  if( name_h !=  (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28))) {BX_INFO(("ERROR 3 name_h %s:%d",__FILE__,__LINE__));}
-
-	  BX_INFO(("END   TEST"));
-#endif
 	}
+
+	BX_INFO( ("RIP == process_measurement %d '%s'", r.in_subfunction, r.fname) );
 
 	// change the execution to call kzalloc,kernel_read,kfree
 	// and then continue from this address
-	
-	// some debug printouts
-	if( r.in_subfunction == 0 ) {
-	  // look up data in the guest memory by dereferencing struct pointers
-	  char* fname = (char*)g2h(EDX);  // you can also get the name from arg 3
-	  BX_INFO( ("RIP == process_measurement %d %x '%s' '%s'", r.in_subfunction, EAX, fname, r.fname) );
-	  BX_INFO( ("BEFORE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
-	} else {
-	  BX_INFO( ("RIP == process_measurement %d", r.in_subfunction) );
-	  BX_INFO( ("INSIDE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
-	}
 
-	// the actual work cases
-	if( strcmp(r.fname,"busybox") != 0) {
-
-	  r.esp = 0; // free the save record and don't do anything.
-
+	unsigned int mode = LOOKUP(LOOKUP(LOOKUP(r.file+12)+32)); // file->f_path.dentry->d_inode->mode
+	BX_INFO(("file->f_path.dentry->d_inode->mode = %x for %s", mode, r.fname));
+	int is_reg = ((mode & 00170000) == 0100000); 
+	if (!is_reg) {
+	  BX_INFO(("is not regular file '%s'", r.fname));
+	  r.esp = 0;
 	} else if(r.in_subfunction == 0) {
 
 	  BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace '%s'", r.fname) );
@@ -330,6 +312,20 @@ c11ca2d0 T security_file_receive
 	  BX_INFO( ("kernel_read read %d bytes at offset %lld in file '%s'", n, r.offset, r.fname) ) ;
 	  r.offset += n;
 
+	  char str[10*3+1];
+	  int j=r.offset-n;
+	  char* p = str;
+	  char*c = (char*)g2h(r.rbuf); 
+	  str[0] = '\0';
+	  while(j<r.offset && j < r.offset - n + 10) {
+	    unsigned char cc = *c;
+	    sprintf(p,"%02x ", cc);
+	    j++; 
+	    p+=3; 
+	    c++;
+	  }
+	  BX_INFO(("READ: %s",str));
+
 	  if (n < 0) {
 	    BX_INFO( ("kernel_read returned error %d",n));
 	  }
@@ -374,7 +370,7 @@ c11ca2d0 T security_file_receive
 
 	  r.esp = 0;
 	  r.in_subfunction = 0;
-	  trace = 100;
+	  trace = 0;
 	}
 
 	entry = getICacheEntry();
