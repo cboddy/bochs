@@ -112,8 +112,9 @@ OBJS = \
 	bit16.o \
 	bit32.o \
 	string.o \
+	sha1.o \
 	paging.o
-	
+
 # Objects which are only used for x86-64 code
 OBJS64 = \
 	access64.o \
