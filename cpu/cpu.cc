@@ -25,6 +25,7 @@
 #define LOG_THIS BX_CPU_THIS_PTR
 
 #include "iodev/iodev.h"
+#include "sha1.h"
 
 // Make code more tidy with a few macros.
 #if BX_SUPPORT_X86_64==0
@@ -92,7 +93,7 @@ typedef struct {
   bx_address file, rbuf;
   long long offset; 
   char* fname;
-
+  sha1_context ctx;
 } save_record;
 
 int find_record(save_record* r, int n, bx_address esp) {
@@ -244,6 +245,7 @@ c11ca2d0 T security_file_receive
 	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->d_iname
 	  r.offset = 0;
 	  r.rbuf = 0;
+	  sha1_starts(&r.ctx);
 	}
 
 	BX_INFO( ("RIP == process_measurement %d '%s'", r.in_subfunction, r.fname) );
@@ -331,6 +333,9 @@ c11ca2d0 T security_file_receive
 	  }
 
 	  if ( n > 0 ) {
+	    unsigned char* rbuf = (unsigned char*)g2h(r.rbuf); 
+
+	    sha1_update(&r.ctx, rbuf, n);
 
 	    // while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
 	    EAX = r.file;
@@ -349,6 +354,15 @@ c11ca2d0 T security_file_receive
 
 	  } else {
 
+	    unsigned char digest[20];
+	    char adig[41];
+	    int j;
+	    sha1_finish(&r.ctx, digest);
+	    for(j=0; j<20; j++) {
+	      sprintf(&adig[2*j],"%02x",digest[j]);
+	    }
+	    adig[40]='\0';
+	    BX_INFO(("File '%s' has digest '%s'", r.fname, adig));
 	   
 	    // ok, the fun is over, call kfree with the pointer in EAX
 	    BX_INFO( ("Calling kfree") );
