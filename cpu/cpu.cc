@@ -90,11 +90,83 @@ typedef struct {
   int in_subfunction;
   bx_address save[3];
 
-  bx_address file, rbuf;
+  bx_address file, rbuf, inode;
   long long offset; 
   char* fname;
   sha1_context ctx;
 } save_record;
+
+
+#define CHECKED_NUM 1000
+int checked_size = 0;
+bx_address checked[CHECKED_NUM];
+
+#define BX_INFO2(x) genlog->info x
+int find_nearest_above(bx_address guest_inode) {
+  int a = 0, b = checked_size, m;
+  BX_INFO2(("find_nearest_above %x",  guest_inode));
+  while(b - a > 1) {
+    m = (a + b) >> 1;
+    if(checked[m] < guest_inode) {
+      a = m + 1;
+    } else {
+      b = m;
+    }
+  }
+  if(checked[a] > guest_inode) { 
+    BX_INFO2(("  returning a = %d",a));
+    return a; 
+  } else { 
+    BX_INFO2(("  returning b = %d",b));
+    return b; 
+  }
+}
+
+int is_checked(bx_address guest_inode) {
+  int j = find_nearest_above(guest_inode);
+  if (j > 0 && guest_inode == checked[j-1]) {
+    j -= 1;
+  }
+  return guest_inode == checked[j];
+}
+
+
+int add_checked(bx_address guest_inode) {
+  // if node not in list, make room and insert it in order
+  int j = find_nearest_above(guest_inode);
+  if (j > 0 && guest_inode == checked[j-1]) {
+    j -= 1;
+  }
+  if(checked_size >= CHECKED_NUM ) {
+    BX_INFO2(( "Can't add inode %x. List is full.", guest_inode ));
+    return 0;  // can't add. list is full
+  } else if( guest_inode == checked[j]) {
+    BX_INFO2(( "Can't add inode %x. Already in list at pos %d.", guest_inode, j ));
+    return 0; // didn't add. node already in list;
+  } else {
+    int i;
+    for(i = checked_size; i > j; i--) {
+      checked[i] = checked[i-1];
+    }
+    checked[j] = guest_inode;
+    checked_size += 1;
+    BX_INFO2(( "Added inode %x at pos %d.", guest_inode, j ));
+    return 1;
+  }
+}
+
+int del_checked(bx_address guest_inode) {
+  int j = find_nearest_above(guest_inode);
+  if (j > 0 && guest_inode == checked[j-1]) {
+    j -= 1;
+  }
+
+  for(; j < checked_size-1; j++) {
+    checked[j] = checked[j+1];
+  }
+  checked_size -= 1;
+}
+
 
 int find_record(save_record* r, int n, bx_address esp) {
   int j = n;
@@ -243,6 +315,8 @@ c11ca2d0 T security_file_receive
 
 	  r.file = EAX;
 	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->d_iname
+	  r.inode = LOOKUP(LOOKUP(r.file+12)+32); // file->f_path.dentry->d_inode
+
 	  r.offset = 0;
 	  r.rbuf = 0;
 	  sha1_starts(&r.ctx);
@@ -253,12 +327,18 @@ c11ca2d0 T security_file_receive
 	// change the execution to call kzalloc,kernel_read,kfree
 	// and then continue from this address
 
-	unsigned int mode = LOOKUP(LOOKUP(LOOKUP(r.file+12)+32)); // file->f_path.dentry->d_inode->mode
+	unsigned int mode = LOOKUP(r.inode+0); // file->f_path.dentry->d_inode->mode
 	BX_INFO(("file->f_path.dentry->d_inode->mode = %x for %s", mode, r.fname));
 	int is_reg = ((mode & 00170000) == 0100000); 
 	if (!is_reg) {
 	  BX_INFO(("is not regular file '%s'", r.fname));
 	  r.esp = 0;
+
+	} else if(is_checked(r.inode) && r.in_subfunction == 0) {
+	  // we must be allowed do deallocate, thus only skip checkin when in_subfunction==0 (i.e. when first entering)
+	  BX_INFO(("is already checked '%s' %x", r.fname, r.inode));
+	  r.esp = 0;
+	  
 	} else if(r.in_subfunction == 0) {
 
 	  BX_INFO( ("entering subfunction call to kmem_cache_alloc_trace '%s'", r.fname) );
@@ -353,17 +433,19 @@ c11ca2d0 T security_file_receive
 	    r.in_subfunction = 2;  // when we come back, continue to read (at in_subfunction == 2)
 
 	  } else {
-
-	    unsigned char digest[20];
-	    char adig[41];
-	    int j;
-	    sha1_finish(&r.ctx, digest);
-	    for(j=0; j<20; j++) {
-	      sprintf(&adig[2*j],"%02x",digest[j]);
+	    
+	    if( n == 0 ) {
+	      unsigned char digest[20];
+	      char adig[41];
+	      int j;
+	      sha1_finish(&r.ctx, digest);
+	      for(j=0; j<20; j++) {
+		sprintf(&adig[2*j],"%02x",digest[j]);
+	      }
+	      adig[40]='\0';
+	      BX_INFO(("File '%s' at inode %x has digest '%s'", r.fname, r.inode, adig));
+	      add_checked(r.inode);
 	    }
-	    adig[40]='\0';
-	    BX_INFO(("File '%s' has digest '%s'", r.fname, adig));
-	   
 	    // ok, the fun is over, call kfree with the pointer in EAX
 	    BX_INFO( ("Calling kfree") );
 	    // kfree(rbuf);
