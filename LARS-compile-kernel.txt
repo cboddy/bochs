@@ -1,0 +1,27 @@
+# built 6f12d2ee52dcf97dcefdadbd500e7650311eaa6a
+mkdir -p build/dist/boot
+make O=build oldconfig
+time make -j8  O=build
+make O=build INSTALL_PATH=dist INSTALL_MOD_PATH=dist modules_install
+make O=build INSTALL_PATH=dist/boot INSTALL_MOD_PATH=dist install
+tar czf build/dist.tgz -C build/dist .
+fakeroot alien --to-deb build/dist.tgz
+scp dist_1-2_all.deb cluster3.sics.se:
+
+# get the addresses of important kernel symbols
+egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches)$' build/System.map \
+ | awk '{printf("#define %-30s 0x%s\n", toupper($3) "_ADDR", $1)}'
+
+# on cluster3
+offset=$(parted /home/larsr/img/hdd.img u b p | awk '/^ 1 / {print $2}' | tr B ' ')
+mount /home/larsr/img/hdd.img /home/larsr/img/hdd -o offset=$offset
+cp /home/larsr/dist_1-2_all.deb /home/larsr/img/hdd/root/
+umount /home/larsr/img/hdd
+
+kvm /home/larsr/img/hdd.img -curses
+
+# in the kvm vm, as root
+
+dpkg -i dist_1-2_all.deb
+update-initramfs -c -k 3.2.0-rc5+
+update-grub
