@@ -73,12 +73,43 @@ static unsigned iCacheMisses=0;
   #define CHECK_MAX_INSTRUCTIONS(count)
 #endif
 
+/*
+egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches)$' build/System.map
+c10ed600 T kfree
+c10ed850 T kmem_cache_alloc_trace
+c10f6690 T kernel_read
+c11cc8f0 T security_file_mmap
+c11e7910 t process_measurement
+c19a91a0 B kmalloc_caches
+*/
+
+#if 0
+// kernel 3.2.0-rc5+
+#define PROCESS_MEASUREMENT_ADDR        0xc11e5aa0
+#define KERNEL_READ_ADDR                0xc10f1e80
+#define KFREE_ADDR                      0xc10e8930
+#define SECURITY_FILE_MMAP_ADDR         0xc11ca1e0
+#define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10e91c0
+#define KMALLOC_CACHES_ADDR	        0xc1983120
+#endif
+
+// kernel 3.3.0-rc3
+#define PROCESS_MEASUREMENT_ADDR        0xc11e7910
+#define KERNEL_READ_ADDR                0xc10f6690
+#define KFREE_ADDR                      0xc10ed600
+#define SECURITY_FILE_MMAP_ADDR         0xc11cc8f0
+#define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10ed850
+#define KMALLOC_CACHES_ADDR	        0xc19a91a0
+
+// TODO: also we must make sure the offsets when traversing data structures 
+//       with LOOKUP and g2h are ok. Currently they are hard coded.
+
 // Guest to host address translation
 inline Bit8u* g2h(bx_address gaddr)  {
     bx_phy_address phys;
     bx_cpu_ptr -> dbg_xlate_linear2phy(gaddr, &phys, 0);
     Bit8u* haddr = BX_MEM(0)->get_vector(phys);
-    return haddr;
+   return haddr;
   }
 
 // fetch the 4 byte word at the guest address x
@@ -101,7 +132,15 @@ typedef struct {
 int checked_size = 0;
 bx_address checked[CHECKED_NUM];
 
+// To dump, or not to dump a lot of debug info -- that is the question.
+#if 0
 #define BX_INFO2(x) genlog->info x
+#else
+#define BX_INFO2(x)
+#undef BX_INFO
+#define BX_INFO(x)
+#endif 
+
 int find_nearest_above(bx_address guest_inode) {
   int a = 0, b = checked_size, m;
   BX_INFO2(("find_nearest_above %x",  guest_inode));
@@ -273,7 +312,7 @@ c11ca2d0 T security_file_receive
       static save_record records[N_SAVE_RECORDS];
       static int trace = 0;
 
-      if(RIP == 0xc11ca1e0) {
+      if(RIP == SECURITY_FILE_MMAP_ADDR) {
 
 	BX_INFO( ("RIP == security_file_mmap") );
 	/*
@@ -293,7 +332,7 @@ c11ca2d0 T security_file_receive
 	*/
       }
 
-      if(RIP ==  0xc11e5aa0) {  // process_measurement
+      if(RIP ==  PROCESS_MEASUREMENT_ADDR) {  
 
 	int ri = find_record(records, N_SAVE_RECORDS, ESP);
 	if( ri == N_SAVE_RECORDS ) {
@@ -354,10 +393,10 @@ c11ca2d0 T security_file_receive
 	  //   0xfff03393 + 0xc11e5e28 + 5 == 0xc10e91c0
 
 	  r.save[0] = EAX; r.save[1] = ECX; r.save[2] = EDX;
-	  EAX = *(Bit32u*)g2h(0xc1983150);
+	  EAX = *(Bit32u*)g2h(KMALLOC_CACHES_ADDR + 4 * 12);   // kmalloc_caches[12] is the pointer to the kmem_cache for 4k blocks
 	  ECX = 0x1000;
 	  EDX = 0x80d0;
-	  divert_execution(0xc10e91c0);  // kmem_cache_alloc_trace
+	  divert_execution(KMEM_CACHE_ALLOC_TRACE_ADDR);  // kmem_cache_alloc_trace
 
 	  trace = 1;
 
@@ -379,7 +418,7 @@ c11ca2d0 T security_file_receive
 	  *(Bit32u*)g2h(ESP) =  r.rbuf;
 	  r.esp = ESP;
 
-	  divert_execution(0xc10f1e80);  // kernel_read
+	  divert_execution(KERNEL_READ_ADDR);  // kernel_read
 
 	  r.in_subfunction = 2;  // when we come back, to next step (at in_subfunction == 2)
 
@@ -428,7 +467,7 @@ c11ca2d0 T security_file_receive
 	    *(Bit32u*)g2h(ESP) =  r.rbuf;
 	    r.esp = ESP;
 
-	    divert_execution(0xc10f1e80);  // kernel_read
+	    divert_execution(KERNEL_READ_ADDR);  // kernel_read
 
 	    r.in_subfunction = 2;  // when we come back, continue to read (at in_subfunction == 2)
 
@@ -444,6 +483,8 @@ c11ca2d0 T security_file_receive
 	      }
 	      adig[40]='\0';
 	      BX_INFO(("File '%s' at inode %x has digest '%s'", r.fname, r.inode, adig));
+	      genlog->info("File '%s' at inode %x has digest '%s'", r.fname, r.inode, adig);
+
 	      add_checked(r.inode);
 	    }
 	    // ok, the fun is over, call kfree with the pointer in EAX
@@ -454,7 +495,7 @@ c11ca2d0 T security_file_receive
 	    //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
 
 	    EAX = r.rbuf;
-	    divert_execution(0xc10e8930);
+	    divert_execution(KFREE_ADDR);
 	    r.in_subfunction = 3;  // when we come back, to next step (at in_subfunction == 3)
 	    
 	  }
@@ -475,7 +516,7 @@ c11ca2d0 T security_file_receive
       }
 
 
-      if(RIP ==  0xc11e5aa0) {
+      if(RIP ==  PROCESS_MEASUREMENT_ADDR) { 
 	BX_INFO(("EIP = %x, EAX = %x",RIP, EAX));
 	BX_INFO( ("AFTER  EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
       }
