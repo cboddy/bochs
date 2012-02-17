@@ -133,7 +133,7 @@ int checked_size = 0;
 bx_address checked[CHECKED_NUM];
 
 // To dump, or not to dump a lot of debug info -- that is the question.
-#if 0
+#if 1
 #define BX_INFO2(x) genlog->info x
 #else
 #define BX_INFO2(x)
@@ -199,11 +199,12 @@ int del_checked(bx_address guest_inode) {
   if (j > 0 && guest_inode == checked[j-1]) {
     j -= 1;
   }
-
-  for(; j < checked_size-1; j++) {
-    checked[j] = checked[j+1];
+  if(checked[j] == guest_inode) {
+    for(; j < checked_size-1; j++) {
+      checked[j] = checked[j+1];
+    }
+    checked_size -= 1;
   }
-  checked_size -= 1;
 }
 
 
@@ -332,6 +333,25 @@ c11ca2d0 T security_file_receive
 	*/
       }
 
+#define INTEGRITY_INODE_FREE_ADDR 0xc11e9c50
+      if(RIP == INTEGRITY_INODE_FREE_ADDR) {
+	if(!is_checked(EAX)) {
+	  BX_INFO(("The inode is not in the checked list (INTEGRITY_INODE_FREE)"));
+	}
+	BX_INFO(("removing inode %x from checked list.  (INTEGRITY_INODE_FREE) ",EAX));
+	del_checked(EAX);
+      }
+      else
+
+#define __DESTROY_INODE_ADDR   0xc110a620
+      if(RIP == __DESTROY_INODE_ADDR) {
+	if(!is_checked(EAX)) {
+	  BX_INFO(("The inode is not in the checked list (__DESTROY_INODE)"));
+	}
+	BX_INFO(("removing inode %x from checked list.  (__DESTROY_INODE)",EAX));
+	del_checked(EAX);
+      }
+      else
       if(RIP ==  PROCESS_MEASUREMENT_ADDR) {  
 
 	int ri = find_record(records, N_SAVE_RECORDS, ESP);
@@ -342,18 +362,22 @@ c11ca2d0 T security_file_receive
 	save_record& r = records[ri];
 	BX_INFO(("save_record %d",ri));
 
+	BX_INFO( ("BEFORE EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
+
+	/*
 	for(int j = 0; j < N_SAVE_RECORDS; j++) {
 	  if(records[j].esp != 0)  {
 	    BX_INFO(("   records[%d] for '%s'", j, records[j].fname ));
 	  }
 	}
-	
+	*/
+
 	if(r.esp == 0) { // initialize
 	  r.esp = ESP;
 	  r.in_subfunction = 0;
 
 	  r.file = EAX;
-	  r.fname = (char*)g2h(LOOKUP(LOOKUP(EAX+12)+28)); // file->dentry->d_iname
+	  r.fname = (char*)g2h(LOOKUP(LOOKUP(r.file+12)+28)); // file->dentry->d_iname
 	  r.inode = LOOKUP(LOOKUP(r.file+12)+32); // file->f_path.dentry->d_inode
 
 	  r.offset = 0;
@@ -366,11 +390,66 @@ c11ca2d0 T security_file_receive
 	// change the execution to call kzalloc,kernel_read,kfree
 	// and then continue from this address
 
-	unsigned int mode = LOOKUP(r.inode+0); // file->f_path.dentry->d_inode->mode
-	BX_INFO(("file->f_path.dentry->d_inode->mode = %x for %s", mode, r.fname));
-	int is_reg = ((mode & 00170000) == 0100000); 
-	if (!is_reg) {
-	  BX_INFO(("is not regular file '%s'", r.fname));
+	
+	int do_check = 1;
+
+	if(r.in_subfunction == 0) { // decide whether to check this file or not.
+
+	  unsigned int mode = LOOKUP(r.inode+0); // file->f_path.dentry->d_inode->mode
+	  BX_INFO(("file->f_path.dentry->d_inode->mode = %x for %s", mode, r.fname));
+	  int is_reg = ((mode & 00170000) == 0100000); 
+	  if (!is_reg) {
+	    BX_INFO(("is not regular file '%s'", r.fname));
+	    do_check = 0;
+	  }
+
+	  // from linux/magic.h
+#define PROC_SUPER_MAGIC 0x9fa0
+#define SYSFS_MAGIC 0x62656572
+#define DEBUGFS_MAGIC 0x64626720
+#define TMPFS_MAGIC 0x01021994
+#define SECURITYFS_MAGIC 0x73636673
+#define SELINUX_MAGIC 0xf97cff8c
+	  // from security/integrity/ima/ima.h
+	  enum ima_hooks { FILE_CHECK = 1, FILE_MMAP, BPRM_CHECK };
+	  // from linux/fs.h
+#define MAY_EXEC                0x00000001
+#define MAY_READ                0x00000004
+
+	  unsigned int fsmagic = LOOKUP(LOOKUP(r.inode+0x1c)+0x34); // inode->i_sb->s_magic
+	  int mask = ECX;
+	  int func = LOOKUP(ESP+4);
+	  int uid = 0;
+
+	  BX_INFO(("fsmagic = %x mask = %x func = %x uid = %d, fname = '%s'",fsmagic, mask,func,uid, r.fname));
+
+	  /* current_thread_info
+	     THREAD_SIZE = (PAGE_SIZE << 1)
+	     (ESP & ~(THREAD_SIZE - 1))
+
+	  struct task_struct *tsk = (current_thread_info()->task);
+	  uid = tsk->cred->uid;
+	  */
+	  // uid =  (ESP & ~(THREAD_SIZE - 1))->task->cred->uid;
+
+	  // don't check if file is on one of the not checked file systems
+	  if (fsmagic == PROC_SUPER_MAGIC || fsmagic == SYSFS_MAGIC ||
+	      fsmagic == DEBUGFS_MAGIC    || fsmagic == TMPFS_MAGIC ||
+	      fsmagic == SECURITYFS_MAGIC || fsmagic == SELINUX_MAGIC) {
+	    BX_INFO(("file '%s' on not-checked filesystem with fsmagic %x",r.fname, fsmagic));
+	    do_check = 0;
+	  }
+	  else if (func == FILE_MMAP  && mask == MAY_EXEC) {}	
+	  else if (func == BPRM_CHECK && mask == MAY_EXEC) {}
+	  else if (func == FILE_CHECK && mask == MAY_READ && uid == 0) {}
+	  else {
+	    BX_INFO(("file '%s' on not-checked because of mask %d func %d",r.fname, mask, func));
+	    do_check = 0; 
+	  }
+	}
+
+	if( ! do_check) {
+	  BX_INFO(("not checking '%s' because of rules", r.fname));
 	  r.esp = 0;
 
 	} else if(is_checked(r.inode) && r.in_subfunction == 0) {
@@ -393,11 +472,18 @@ c11ca2d0 T security_file_receive
 	  //   0xfff03393 + 0xc11e5e28 + 5 == 0xc10e91c0
 
 	  r.save[0] = EAX; r.save[1] = ECX; r.save[2] = EDX;
+
 	  EAX = *(Bit32u*)g2h(KMALLOC_CACHES_ADDR + 4 * 12);   // kmalloc_caches[12] is the pointer to the kmem_cache for 4k blocks
 	  ECX = 0x1000;
 	  EDX = 0x80d0;
 	  divert_execution(KMEM_CACHE_ALLOC_TRACE_ADDR);  // kmem_cache_alloc_trace
 
+	  /*
+#define KZALLOC_ADDR 0xc108ca10
+	  EAX = 0x1000;
+	  ECX = 0xd0;
+	  divert_execution(KZALLOC_ADDR);  // kzalloc
+	  */
 	  trace = 1;
 
 	  r.in_subfunction = 1;  // when we come back, to next step (at in_subfunction == 1)
