@@ -91,7 +91,6 @@ c19a91a0 B kmalloc_caches
 #define SECURITY_FILE_MMAP_ADDR         0xc11ca1e0
 #define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10e91c0
 #define KMALLOC_CACHES_ADDR	        0xc1983120
-#endif
 
 // kernel 3.3.0-rc3
 #define PROCESS_MEASUREMENT_ADDR        0xc11e7910
@@ -100,6 +99,15 @@ c19a91a0 B kmalloc_caches
 #define SECURITY_FILE_MMAP_ADDR         0xc11cc8f0
 #define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10ed850
 #define KMALLOC_CACHES_ADDR	        0xc19a91a0
+#endif
+
+// kernel 3.3.0-rc4
+#define KFREE_ADDR                     0xc10f1030
+#define KMEM_CACHE_ALLOC_TRACE_ADDR    0xc10f1a40
+#define KERNEL_READ_ADDR               0xc10fb660
+#define SECURITY_FILE_MMAP_ADDR        0xc11d0700
+#define PROCESS_MEASUREMENT_ADDR       0xc11ea7c0
+#define KMALLOC_CACHES_ADDR            0xc19a8100
 
 // TODO: also we must make sure the offsets when traversing data structures 
 //       with LOOKUP and g2h are ok. Currently they are hard coded.
@@ -133,7 +141,7 @@ int checked_size = 0;
 bx_address checked[CHECKED_NUM];
 
 // To dump, or not to dump a lot of debug info -- that is the question.
-#if 1
+#if 0
 #define BX_INFO2(x) genlog->info x
 #else
 #define BX_INFO2(x)
