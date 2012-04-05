@@ -74,7 +74,7 @@ static unsigned iCacheMisses=0;
 #endif
 
 /*
-egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches)$' build/System.map
+egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches|__destroy_inode|integrity_inode_free)$' build/System.map
 c10ed600 T kfree
 c10ed850 T kmem_cache_alloc_trace
 c10f6690 T kernel_read
@@ -102,12 +102,16 @@ c19a91a0 B kmalloc_caches
 #endif
 
 // kernel 3.3.0-rc4
-#define KFREE_ADDR                     0xc10f1030
-#define KMEM_CACHE_ALLOC_TRACE_ADDR    0xc10f1a40
+// cat /home/larsr/System.map-3.3.0-rc4 | egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches|__destroy_inode|integrity_inode_free)$' | awk '{printf("#define %-30s 0x%s\n",toupper($3 "_ADDR"),$1)}' | sort
+
+#define __DESTROY_INODE_ADDR           0xc110a7d0
+#define INTEGRITY_INODE_FREE_ADDR      0xc11e9e90
 #define KERNEL_READ_ADDR               0xc10fb660
-#define SECURITY_FILE_MMAP_ADDR        0xc11d0700
+#define KFREE_ADDR                     0xc10f1030
+#define KMALLOC_CACHES_ADDR            0xc1a14100
+#define KMEM_CACHE_ALLOC_TRACE_ADDR    0xc10f1a40
 #define PROCESS_MEASUREMENT_ADDR       0xc11ea7c0
-#define KMALLOC_CACHES_ADDR            0xc19a8100
+#define SECURITY_FILE_MMAP_ADDR        0xc11d0700
 
 // TODO: also we must make sure the offsets when traversing data structures 
 //       with LOOKUP and g2h are ok. Currently they are hard coded.
@@ -303,6 +307,9 @@ void BX_CPU_C::cpu_loop(Bit32u max_instr_count)
         debug_disasm_instruction(BX_CPU_THIS_PTR prev_rip);
       }
 #endif
+
+//#define DONTRUN 1
+#ifndef DONTRUN
 
 /* from System.map
 c11ca0e0 T security_file_permission
@@ -609,6 +616,7 @@ c11ca2d0 T security_file_receive
 
       }
 
+#endif // end of DONTRUN
 
       if(RIP ==  PROCESS_MEASUREMENT_ADDR) { 
 	BX_INFO(("EIP = %x, EAX = %x",RIP, EAX));
