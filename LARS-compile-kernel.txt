@@ -15,10 +15,10 @@ egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_all
 # on cluster3
 offset=$(parted /home/larsr/img/hdd.img u b p | awk '/^ 1 / {print $2}' | tr B ' ')
 sudo mount /home/larsr/img/hdd.img /home/larsr/img/hdd -o offset=$offset
-sudo cp /home/larsr/dist_1-2_all.deb /home/larsr/img/hdd/root/
+sudo cp dist_1-2_all.deb /home/larsr/img/hdd/root/
 sudo umount /home/larsr/img/hdd
 
-kvm /home/larsr/img/hdd.img -curses
+kvm /home/larsr/img/hdd.img -curses -net nic,model=ne2k_pci
 
 # in the kvm vm, as root
 
@@ -32,4 +32,8 @@ update-grub
 wget http://sourceforge.net/projects/lame/files/lame/3.99/lame-3.99.4.tar.gz
 rm -rf lame-3.99.4
 time (date; tar xfz lame-3.99.4.tar.gz; cd lame-3.99.4; make -f Makefile.unix 2>1 > buildlog.txt ; date)
+
+
+dd if=/dev/zero of=bigfile bs=1M count=1k
+time openssl sha1 bigfile
 
