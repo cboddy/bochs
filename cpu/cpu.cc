@@ -104,6 +104,8 @@ c19a91a0 B kmalloc_caches
 // kernel 3.3.0-rc4
 // cat /home/larsr/System.map-3.3.0-rc4 | egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches|__destroy_inode|integrity_inode_free)$' | awk '{printf("#define %-30s 0x%s\n",toupper($3 "_ADDR"),$1)}' | sort
 
+#if 0  
+ // read from file instead
 #define __DESTROY_INODE_ADDR           0xc110a7d0
 #define INTEGRITY_INODE_FREE_ADDR      0xc11e9e90
 #define KERNEL_READ_ADDR               0xc10fb660
@@ -112,6 +114,12 @@ c19a91a0 B kmalloc_caches
 #define KMEM_CACHE_ALLOC_TRACE_ADDR    0xc10f1a40
 #define PROCESS_MEASUREMENT_ADDR       0xc11ea7c0
 #define SECURITY_FILE_MMAP_ADDR        0xc11d0700
+#endif
+
+extern bx_address process_measurement,kernel_read,kfree,security_file_mmap,kmem_cache_alloc_trace,kmalloc_caches,__destroy_inode,integrity_inode_free;
+extern symbol_entry kernel_symbols[];
+
+
 
 // TODO: also we must make sure the offsets when traversing data structures 
 //       with LOOKUP and g2h are ok. Currently they are hard coded.
@@ -145,7 +153,7 @@ int checked_size = 0;
 bx_address checked[CHECKED_NUM];
 
 // To dump, or not to dump a lot of debug info -- that is the question.
-#if 0
+#if 1
 #define BX_INFO2(x) genlog->info x
 #else
 #define BX_INFO2(x)
@@ -206,7 +214,7 @@ int add_checked(bx_address guest_inode) {
   }
 }
 
-int del_checked(bx_address guest_inode) {
+void del_checked(bx_address guest_inode) {
   int j = find_nearest_above(guest_inode);
   if (j > 0 && guest_inode == checked[j-1]) {
     j -= 1;
@@ -328,7 +336,7 @@ c11ca2d0 T security_file_receive
       static save_record records[N_SAVE_RECORDS];
       static int trace = 0;
 
-      if(RIP == SECURITY_FILE_MMAP_ADDR) {
+      if(RIP == security_file_mmap) {
 
 	BX_INFO( ("RIP == security_file_mmap") );
 	/*
@@ -348,18 +356,16 @@ c11ca2d0 T security_file_receive
 	*/
       }
 
-#define INTEGRITY_INODE_FREE_ADDR 0xc11e9c50
-      if(RIP == INTEGRITY_INODE_FREE_ADDR) {
+      if(RIP == integrity_inode_free) {
 	if(!is_checked(EAX)) {
-	  BX_INFO(("The inode is not in the checked list (INTEGRITY_INODE_FREE)"));
+	  BX_INFO(("The inode is not in the checked list (integrity_inode_free)"));
 	}
-	BX_INFO(("removing inode %x from checked list.  (INTEGRITY_INODE_FREE) ",EAX));
+	BX_INFO(("removing inode %x from checked list.  (integrity_inode_free) ",EAX));
 	del_checked(EAX);
       }
       else
 
-#define __DESTROY_INODE_ADDR   0xc110a620
-      if(RIP == __DESTROY_INODE_ADDR) {
+      if(RIP == __destroy_inode) {
 	if(!is_checked(EAX)) {
 	  BX_INFO(("The inode is not in the checked list (__DESTROY_INODE)"));
 	}
@@ -367,7 +373,7 @@ c11ca2d0 T security_file_receive
 	del_checked(EAX);
       }
       else
-      if(RIP ==  PROCESS_MEASUREMENT_ADDR) {  
+      if(RIP ==  process_measurement) {  
 
 	int ri = find_record(records, N_SAVE_RECORDS, ESP);
 	if( ri == N_SAVE_RECORDS ) {
@@ -488,10 +494,10 @@ c11ca2d0 T security_file_receive
 
 	  r.save[0] = EAX; r.save[1] = ECX; r.save[2] = EDX;
 
-	  EAX = *(Bit32u*)g2h(KMALLOC_CACHES_ADDR + 4 * 12);   // kmalloc_caches[12] is the pointer to the kmem_cache for 4k blocks
+	  EAX = *(Bit32u*)g2h(kmalloc_caches + 4 * 12);   // kmalloc_caches[12] is the pointer to the kmem_cache for 4k blocks
 	  ECX = 0x1000;
 	  EDX = 0x80d0;
-	  divert_execution(KMEM_CACHE_ALLOC_TRACE_ADDR);  // kmem_cache_alloc_trace
+	  divert_execution(kmem_cache_alloc_trace);  // kmem_cache_alloc_trace
 
 	  /*
 #define KZALLOC_ADDR 0xc108ca10
@@ -519,7 +525,7 @@ c11ca2d0 T security_file_receive
 	  *(Bit32u*)g2h(ESP) =  r.rbuf;
 	  r.esp = ESP;
 
-	  divert_execution(KERNEL_READ_ADDR);  // kernel_read
+	  divert_execution(kernel_read);  // kernel_read
 
 	  r.in_subfunction = 2;  // when we come back, to next step (at in_subfunction == 2)
 
@@ -568,7 +574,7 @@ c11ca2d0 T security_file_receive
 	    *(Bit32u*)g2h(ESP) =  r.rbuf;
 	    r.esp = ESP;
 
-	    divert_execution(KERNEL_READ_ADDR);  // kernel_read
+	    divert_execution(kernel_read);  // kernel_read
 
 	    r.in_subfunction = 2;  // when we come back, continue to read (at in_subfunction == 2)
 
@@ -596,7 +602,7 @@ c11ca2d0 T security_file_receive
 	    //    0xc11e5ecf:     0xe8    0x5c    0x2a    0xf0    0xff
 
 	    EAX = r.rbuf;
-	    divert_execution(KFREE_ADDR);
+	    divert_execution(kfree);
 	    r.in_subfunction = 3;  // when we come back, to next step (at in_subfunction == 3)
 	    
 	  }
@@ -618,7 +624,7 @@ c11ca2d0 T security_file_receive
 
 #endif // end of DONTRUN
 
-      if(RIP ==  PROCESS_MEASUREMENT_ADDR) { 
+      if(RIP ==  process_measurement) { 
 	BX_INFO(("EIP = %x, EAX = %x",RIP, EAX));
 	BX_INFO( ("AFTER  EBX=%x ESI=%x EDI=%x, ESP=%x, EBP=%x", EBX, ESI, EDI, ESP, EBP) );
       }

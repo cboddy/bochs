@@ -621,4 +621,6 @@ BX_CPP_INLINE Bit64u bx_bswap64(Bit64u val64)
   return (b0<<56) | (b1<<48) | (b2<<40) | (b3<<32) | (b4<<24) | (b5<<16) | (b6<<8) | b7;
 }
 
+typedef struct { const char* name; bx_address* value; } symbol_entry;
+
 #endif  /* BX_BOCHS_H */

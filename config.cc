@@ -34,6 +34,19 @@
 #undef getenv
 #endif
 
+bx_address process_measurement,kernel_read,kfree,security_file_mmap,kmem_cache_alloc_trace,kmalloc_caches,__destroy_inode,integrity_inode_free;
+
+symbol_entry kernel_symbols[] = { 
+  { "process_measurement", &process_measurement },
+  { "kernel_read", &kernel_read },
+  { "kfree", &kfree },
+  { "security_file_mmap", &security_file_mmap },
+  { "kmem_cache_alloc_trace", &kmem_cache_alloc_trace },
+  { "kmalloc_caches", &kmalloc_caches },
+  { "__destroy_inode", &__destroy_inode },
+  { "integrity_inode_free", &integrity_inode_free },
+  { NULL, NULL },
+};
 
 int bochsrc_include_count = 0;
 #if BX_PLUGINS
@@ -3348,6 +3361,47 @@ static int parse_line_formatted(const char *context, int num_params, char *param
   else if (SIM->is_user_option(params[0]))
   {
     return SIM->parse_user_option(context, num_params, &params[0]);
+  }
+  else if (!strcmp(params[0], "integrity")) {
+
+    symbol_entry* sym;
+    int i, j;
+    for(sym = kernel_symbols; sym->name != NULL; sym++) {
+      *(sym->value) = 0;
+    }
+    for (i=1; i<num_params; i++) {
+      if (!strncmp(params[i], "symbols=", 8)) {
+	FILE *fp = fopen(&params[i][8],"r");
+	if(fp!=0) {
+	  char s[1000];
+	  while(fgets(s,1000,fp)) {
+	    if(s[0]!='\0') s[strlen(s)-1]='\0'; // overwrite newline at the end of s
+	    for(sym = kernel_symbols; sym->name != NULL; sym++) {
+	      if (!strcmp(&s[11], sym->name)) {
+		for(j=0;j<8;j++) {
+		  *(sym->value) *= 16;
+		  if('0'<=s[j] && s[j] <= '9') {
+		    *(sym->value) += s[j] - '0';
+		  }
+		  else if('a'<=s[j] && s[j] <= 'f') {
+		    *(sym->value) += s[j] - 'a' + 10;
+		  } else {
+		    BX_INFO(("ERROR: Couldn't parse symbol string:\n%s\n",s));
+		  }
+		}
+	      }
+	    }
+	  }
+	  fclose(fp);
+	  for(sym = kernel_symbols; sym->name != NULL; sym++) {
+	    BX_INFO(("SYMBOL %s: 0x%08x\n",sym->name, *(sym->value)));
+	    if(*(sym->value)==0) {
+	      BX_INFO(("ERROR: %s was not found in file %s\n",sym->name, &params[i][8]));
+	    }
+	  }
+	}
+      }
+    }
   }
   else
   {
