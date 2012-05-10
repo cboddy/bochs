@@ -73,53 +73,9 @@ static unsigned iCacheMisses=0;
   #define CHECK_MAX_INSTRUCTIONS(count)
 #endif
 
-/*
-egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches|__destroy_inode|integrity_inode_free)$' build/System.map
-c10ed600 T kfree
-c10ed850 T kmem_cache_alloc_trace
-c10f6690 T kernel_read
-c11cc8f0 T security_file_mmap
-c11e7910 t process_measurement
-c19a91a0 B kmalloc_caches
-*/
-
-#if 0
-// kernel 3.2.0-rc5+
-#define PROCESS_MEASUREMENT_ADDR        0xc11e5aa0
-#define KERNEL_READ_ADDR                0xc10f1e80
-#define KFREE_ADDR                      0xc10e8930
-#define SECURITY_FILE_MMAP_ADDR         0xc11ca1e0
-#define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10e91c0
-#define KMALLOC_CACHES_ADDR	        0xc1983120
-
-// kernel 3.3.0-rc3
-#define PROCESS_MEASUREMENT_ADDR        0xc11e7910
-#define KERNEL_READ_ADDR                0xc10f6690
-#define KFREE_ADDR                      0xc10ed600
-#define SECURITY_FILE_MMAP_ADDR         0xc11cc8f0
-#define KMEM_CACHE_ALLOC_TRACE_ADDR     0xc10ed850
-#define KMALLOC_CACHES_ADDR	        0xc19a91a0
-#endif
-
-// kernel 3.3.0-rc4
-// cat /home/larsr/System.map-3.3.0-rc4 | egrep ' (process_measurement|kernel_read|kfree|security_file_mmap|kmem_cache_alloc_trace|kmalloc_caches|__destroy_inode|integrity_inode_free)$' | awk '{printf("#define %-30s 0x%s\n",toupper($3 "_ADDR"),$1)}' | sort
-
-#if 0  
- // read from file instead
-#define __DESTROY_INODE_ADDR           0xc110a7d0
-#define INTEGRITY_INODE_FREE_ADDR      0xc11e9e90
-#define KERNEL_READ_ADDR               0xc10fb660
-#define KFREE_ADDR                     0xc10f1030
-#define KMALLOC_CACHES_ADDR            0xc1a14100
-#define KMEM_CACHE_ALLOC_TRACE_ADDR    0xc10f1a40
-#define PROCESS_MEASUREMENT_ADDR       0xc11ea7c0
-#define SECURITY_FILE_MMAP_ADDR        0xc11d0700
-#endif
-
+// kernel symbols read from System.map specified in .bochsrc as 'integrity: symbols=path/System.map
 extern bx_address process_measurement,kernel_read,kfree,security_file_mmap,kmem_cache_alloc_trace,kmalloc_caches,__destroy_inode,integrity_inode_free;
 extern symbol_entry kernel_symbols[];
-
-
 
 // TODO: also we must make sure the offsets when traversing data structures 
 //       with LOOKUP and g2h are ok. Currently they are hard coded.
@@ -316,22 +272,6 @@ void BX_CPU_C::cpu_loop(Bit32u max_instr_count)
       }
 #endif
 
-//#define DONTRUN 1
-#ifndef DONTRUN
-
-/* from System.map
-c11ca0e0 T security_file_permission
-c11ca180 T security_file_alloc
-c11ca1a0 T security_file_free
-c11ca1c0 T security_file_ioctl
-c11ca1e0 T security_file_mmap
-c11ca230 T security_file_mprotect
-c11ca250 T security_file_lock
-c11ca270 T security_file_fcntl
-c11ca290 T security_file_set_fowner
-c11ca2b0 T security_file_send_sigiotask
-c11ca2d0 T security_file_receive
-*/      
 #define N_SAVE_RECORDS 100
       static save_record records[N_SAVE_RECORDS];
       static int trace = 0;
@@ -499,12 +439,6 @@ c11ca2d0 T security_file_receive
 	  EDX = 0x80d0;
 	  divert_execution(kmem_cache_alloc_trace);  // kmem_cache_alloc_trace
 
-	  /*
-#define KZALLOC_ADDR 0xc108ca10
-	  EAX = 0x1000;
-	  ECX = 0xd0;
-	  divert_execution(KZALLOC_ADDR);  // kzalloc
-	  */
 	  trace = 1;
 
 	  r.in_subfunction = 1;  // when we come back, to next step (at in_subfunction == 1)
@@ -514,7 +448,6 @@ c11ca2d0 T security_file_receive
 	  BX_INFO( ("returning from subfunction call to kmem_cache_alloc_trace, EAX = %x", EAX) );
 	  r.rbuf = EAX;
 
-	  // while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
 	  EAX = r.file;
 	  ECX = r.offset >> 32;
 	  EDX = r.offset & 0xffffffff;
@@ -563,7 +496,6 @@ c11ca2d0 T security_file_receive
 
 	    sha1_update(&r.ctx, rbuf, n);
 
-	    // while((n = kernel_read(file, offset, rbuf, PAGE_SIZE)) > 0) {
 	    EAX = r.file;
 	    ECX = r.offset >> 32;
 	    EDX = r.offset & 0xffffffff;
@@ -589,8 +521,8 @@ c11ca2d0 T security_file_receive
 		sprintf(&adig[2*j],"%02x",digest[j]);
 	      }
 	      adig[40]='\0';
-	      BX_INFO(("File '%s' at inode %x has digest '%s'", r.fname, r.inode, adig));
-	      genlog->info("File '%s' at inode %x has digest '%s'", r.fname, r.inode, adig);
+	      BX_INFO(("File '%s' at inode %x has sha1 digest '%s'", r.fname, r.inode, adig));
+	      genlog->info("File '%s' at inode %x has sha1 digest '%s'", r.fname, r.inode, adig);
 
 	      add_checked(r.inode);
 	    }
@@ -621,8 +553,6 @@ c11ca2d0 T security_file_receive
 	i = entry->i;
 
       }
-
-#endif // end of DONTRUN
 
       if(RIP ==  process_measurement) { 
 	BX_INFO(("EIP = %x, EAX = %x",RIP, EAX));
