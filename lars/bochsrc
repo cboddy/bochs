@@ -1,0 +1,80 @@
+
+config_interface:  textconfig
+display_library:   term
+
+log:         bochsout.txt
+logprefix:   %t%e%d
+
+integrity:   symbols=System.map-3.4.0-rc6
+
+cpu:         count=1, ips=10000000, reset_on_triple_fault=1, ignore_bad_msrs=1, msrs="msrs.def"
+cpuid:       cpuid_limit_winnt=0, mmx=1, sse=sse4_2,  sep=1, aes=1, xsave=1, movbe=1
+cpuid:       stepping=5, vendor_string="GenuineIntel", brand_string="              Intel(R) Pentium(R) 4 CPU        "
+memory:      host=1024, guest=1024
+romimage:    file="BIOS-bochs-latest"
+vgaromimage: file="VGABIOS-lgpl-latest"
+
+plugin_ctrl: unmapped=1, biosdev=1, speaker=1, extfpuirq=1, ioapic=1
+
+boot:        disk
+
+### get the disk geometry with 'sudo parted hdd.img u chs p | grep BIOS'
+
+ata0:        enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=disk, path="hdd.img", mode=flat, cylinders=65536, heads=4, spt=32, model="MyBochsHD",translation=large,biosdetect=cmos
+ata0-slave:  type=disk, path="/dev/cluster3/bigfiles", mode=flat, cylinders=2610, heads=255, spt=63, model="LVM bigfiles",translation=large,biosdetect=auto
+
+ata1:        enabled=0, ioaddr1=0x170, ioaddr2=0x370, irq=15
+
+ne2k:        enabled=1, ioaddr=0x300, irq=10, mac=fe:fd:de:ad:be:ef, ethmod=tuntap, ethdev=/dev/net/tun, script=tunconfig-script
+i440fxsupport: enabled=1, slot1=ne2k
+
+clock:       sync=realtime, time0=local
+#clock:       sync=none, time0=local
+#clock:       sync=both, time0=utc
+
+# How to create a pty that you can connect to with screen, minicom, etc.:
+#    socat PTY,link=bochspty PTY,link=screenpty & screen screenpty
+#com1:       enabled=1, mode=term, dev="bochspty"
+
+#com1:       enabled=1, mode=term, dev="/dev/pts/3"
+#com1:       enabled=1, mode=socket-server, dev=localhost:8880
+com2:        enabled=0
+com3:        enabled=0
+com4:        enabled=0
+
+parport1:    enabled=0
+parport2:    enabled=0
+
+usb_uhci:    enabled=0
+usb_ohci:    enabled=0
+
+vga:                  enabled=0
+vga_update_interval:  300000
+#vga:                 extension=vbe
+
+print_timestamps:     enabled=0
+port_e9_hack:         enabled=0
+text_snapshot_check:  enabled=0
+private_colormap:     enabled=0
+
+# no cmosimage
+
+sb16:                 enabled=0
+# no loader
+
+panic:       action=ask
+error:       action=report
+info:        action=report
+debug:       action=ignore
+pass:        action=fatal
+
+keyboard_type:            at
+keyboard_serial_delay:    250
+keyboard_paste_delay:     100000
+keyboard_mapping:         enabled=0, map=
+user_shortcut:            keys=none
+
+mouse:       enabled=0, type=ps2, toggle=ctrl+mbutton
+
+gdbstub:     enabled=0, port=11234, text_base=0, data_base=0, bss_base=0

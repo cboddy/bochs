@@ -1,0 +1,31 @@
+# from build d48b97b403d23f6df0b990cee652bdf9a52337a3
+cd linux.git
+TAG=v3.4-rc6
+KVER=3.4.0-rc6
+git checkout $TAG
+mkdir -p build/dist/boot
+cp ../linux-config build/.config
+make O=build oldconfig
+time make -j8  O=build
+make O=build INSTALL_PATH=dist INSTALL_MOD_PATH=dist modules_install
+make O=build INSTALL_PATH=dist/boot INSTALL_MOD_PATH=dist install
+tar czf build/kernel-$KVER.tgz -C build/dist .
+fakeroot alien --to-deb build/kernel-$KVER.tgz
+DISK=/home/larsr/img/hdd.img
+MOUNT=/mnt
+offset=$(parted $DISK u b p | awk '/^ 1 / {print $2}' | tr B ' ')
+sudo mount $DISK $MOUNT -o offset=$offset
+sudo cp kernel-$KVER_1-2_all.deb $MOUNT/root/
+sudo umount $MOUNT
+
+# Install the new kernel in the disk image, for instance
+# like this:
+sudo kvm $DISK -net nic,model=ne2k_pci -net user -curses
+
+# In kvm, as root
+
+# Set KVER
+dpkg -i kernel-$KVER_1-2_all.deb
+update-initramfs -c -k $KVER
+update-grub
+
