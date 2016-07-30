@@ -82,3 +82,6 @@ many ways you could help out.  For example:
   - writing/cleaning up documentation
   - testing out Bochs on every imaginable operating system and
     reporting how it goes.
+
+### Dependencies
+* libxrandr-dev
